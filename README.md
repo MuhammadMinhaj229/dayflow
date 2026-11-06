@@ -1,64 +1,66 @@
-# DayFlow — Personal Productivity OS
+# DayFlow
 
-A Samsung One UI-inspired personal planner: one structured task model, a calm daily command center, MongoDB-backed persistence, and a path to a real Android home-screen widget.
+**DayFlow V3 — Personal Operations OS**
 
-> Initial MVP scaffold. MongoDB Atlas and production authentication require environment setup and verification before live use.
+A local-first personal workspace built around one device-owned data store. The application is designed for a shared React codebase that can run as a browser-installed PWA and inside a future Capacitor Android shell.
 
-## Product direction
-- Glance: today's progress and next actions.
-- Plan: ordered tasks, priorities, time blocks and project context.
-- Review: completed work, carry-over and next actions.
-- Sync: explicit, idempotent import of finalized plans from ChatGPT or another trusted client.
-- Mobile: responsive web app/PWA first; native Android Glance widget is Phase 2.
+## V3 principles
 
-## Stack
-- Next.js 16 App Router, React 19, TypeScript
-- MongoDB Node.js driver 7 / MongoDB Atlas
-- Tailwind CSS, custom Samsung One UI-inspired design system
-- Vercel hosting
-- Playwright E2E tests and GitHub Actions CI
-- Kotlin + Jetpack Glance for the future native widget
+- The device is the source of truth for tasks and projects.
+- No MongoDB, hosted task database, account-based task sync or direct ChatGPT integration.
+- Local PostgreSQL through PGlite; the current browser build persists it in IndexedDB.
+- All five existing modules remain part of the product: PHFI Research, Career Operations, AGM Studio / Business, Projects Lab, and Systems & Access.
+- Task changes are stored locally and remain available offline after the app has loaded successfully.
+- Gmail integration is planned as a separate, explicit, read-only metadata sync through a native local MCP service. It is not implemented in this milestone.
+- User task contents and Gmail metadata are not sent to the DayFlow Vercel deployment.
 
-## Local development
-Requirements: Node.js 20.9+ (Node 22 recommended), npm, and a MongoDB Atlas connection string.
+## Implemented in this branch
+
+- React + TypeScript + Vite application shell.
+- PGlite database persisted with the IndexedDB filesystem.
+- Versioned schema migration and task create/read/update/status/archive operations.
+- Local task event history.
+- Responsive Today dashboard and five-module navigation.
+- Search, quick capture and task edit modal.
+- PWA manifest, offline asset caching and prompted service-worker updates.
+- TypeScript, ESLint, Vitest and Playwright quality gates.
+
+## Not yet implemented
+
+Native Android/Capacitor project, Android private file workspace, encrypted backup/restore, database encryption, vector search, Gmail OAuth/sync/MCP, Android background work, native widgets and production release workflow.
+
+## Storage and privacy
+
+The current web app uses PGlite's IndexedDB filesystem. This is persistent browser-origin storage, not a user-visible folder and not a substitute for encrypted backups. Clearing browser/site data or uninstalling a browser profile can remove it. The app does not currently claim end-to-end encryption.
+
+The Android shell will add an app-private DayFlow workspace and native backup/export support. OPFS will be evaluated separately for compatible Chromium runtimes; it is not assumed to work across every browser.
+
+Do not enter PHFI participant or child study data into DayFlow.
+
+## Development
+
+Requirements: Node.js 22.13+ and npm.
 
 ```bash
-cp .env.example .env.local
 npm install
 npm run dev
 ```
 
-For UI-only preview, `DAYFLOW_DEMO_MODE=true` stores tasks in browser localStorage. This mode is not synced or durable and must not be used as production persistence.
+Quality gates:
 
-## Production environment
-Set the following in Vercel Project Settings → Environment Variables:
-- `MONGODB_URI`
-- `MONGODB_DB` (recommended: `dayflow`)
-- `DAYFLOW_ADMIN_EMAIL`
-- `DAYFLOW_ADMIN_PASSWORD_HASH`
-- `DAYFLOW_AUTH_SECRET` (random secret, 32+ characters)
-- `DAYFLOW_SYNC_TOKEN` (for authenticated plan imports)
-- `DAYFLOW_DEMO_MODE=false`
-
-Generate secrets locally; never commit `.env.local` or expose credentials in client code. Run `npm run db:indexes` against the intended database before production.
-
-## API overview
-- `GET /api/health`
-- `GET /api/tasks?date=YYYY-MM-DD`
-- `POST /api/tasks`
-- `PATCH /api/tasks/:taskId`
-- `DELETE /api/tasks/:taskId`
-- `GET /api/plans`
-- `POST /api/integrations/plans/import`
-
-See `docs/architecture.md`, `docs/plan-sync.md`, `docs/research-and-decisions.md`, and `docs/release-checklist.md`.
-
-## Quality gates
 ```bash
 npm run typecheck
 npm run lint
+npm test
 npm run build
+npx playwright install chromium
 npm run test:e2e
 ```
 
-Run the checks and verify database-backed authentication before enabling production access.
+## Release policy
+
+The V3 migration is developed on `architecture/v3-local-first-gmail-mcp`. The legacy `main` branch and its archive are preserved until the V3 build, local persistence, browser tests and Vercel preview are verified. Do not switch production framework settings or remove legacy files before those gates pass.
+
+## Architecture
+
+See [docs/architecture-v3-local-first.md](docs/architecture-v3-local-first.md).
