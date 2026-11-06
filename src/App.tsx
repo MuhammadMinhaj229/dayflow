@@ -158,8 +158,8 @@ export default function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
   const [updateWorker, setUpdateWorker] = useState<((reloadPage?: boolean) => Promise<void>) | null>(null);
-  const canApplyUpdate = !editorOpen && pendingWrites === 0 && !loading;
   const [pendingWrites, setPendingWrites] = useState(0);
+  const canApplyUpdate = !editorOpen && pendingWrites === 0 && !loading;
 
   async function refreshTasks() {
     setDatabaseError("");
