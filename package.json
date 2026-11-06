@@ -1,0 +1,43 @@
+{
+  "name": "dayflow-personal-productivity-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Samsung One UI-inspired personal planning workspace with MongoDB-backed task sync.",
+  "license": "MIT",
+  "engines": { "node": ">=20.9.0" },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "password-hash": "node scripts/hash-password.mjs",
+    "db:indexes": "node scripts/ensure-indexes.mjs",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "bcryptjs": "3.0.2",
+    "clsx": "2.1.1",
+    "jose": "6.1.0",
+    "lucide-react": "0.510.0",
+    "mongodb": "7.4.0",
+    "server-only": "0.0.1",
+    "next": "16.2.9",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1",
+    "@types/bcryptjs": "2.4.6",
+    "@types/node": "20.17.0",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.0.0",
+    "eslint-config-next": "16.2.9",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.5.0",
+    "tailwindcss": "3.4.1",
+    "typescript": "5.7.0"
+  }
+}
