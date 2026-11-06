@@ -158,6 +158,7 @@ export default function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
   const [updateWorker, setUpdateWorker] = useState<((reloadPage?: boolean) => Promise<void>) | null>(null);
+  const [pendingWrites, setPendingWrites] = useState(0);
 
   async function refreshTasks() {
     setDatabaseError("");
@@ -219,23 +220,40 @@ export default function App() {
   const greetingHour = new Date().getHours();
   const greeting = greetingHour < 12 ? "Good morning" : greetingHour < 17 ? "Good afternoon" : "Good evening";
 
+  async function withPendingWrite<T>(operation: () => Promise<T>): Promise<T> {
+    setPendingWrites((count) => count + 1);
+    try {
+      return await operation();
+    } finally {
+      setPendingWrites((count) => Math.max(0, count - 1));
+    }
+  }
+
   async function saveTask(draft: TaskDraft) {
-    if (editingTask) await updateTask(editingTask.id, draft);
-    else await createTask(draft);
-    await refreshTasks();
+    await withPendingWrite(async () => {
+      if (editingTask) await updateTask(editingTask.id, draft);
+      else await createTask(draft);
+      await refreshTasks();
+    });
     setEditorOpen(false);
     setEditingTask(null);
   }
 
   async function toggleTask(task: Task) {
-    await setTaskStatus(task.id, task.status === "done" ? "next" : "done");
-    await refreshTasks();
+    await withPendingWrite(async () => {
+      await setTaskStatus(task.id, task.status === "done" ? "next" : "done");
+      await refreshTasks();
+    });
   }
 
   async function archive(task: Task) {
-    await archiveTask(task.id);
-    await refreshTasks();
+    await withPendingWrite(async () => {
+      await archiveTask(task.id);
+      await refreshTasks();
+    });
   }
+
+  const canApplyUpdate = !editorOpen && pendingWrites === 0 && !loading;
 
   function openNewTask() {
     setEditingTask(null);
@@ -305,7 +323,7 @@ export default function App() {
         {updateAvailable && (
           <div className="notice notice-update" role="status">
             <RefreshCw size={16} /><span>A DayFlow update is ready. Your local records will be preserved.</span>
-            <button onClick={() => void updateWorker?.(true)}>Update now</button>
+            <button disabled={!canApplyUpdate} onClick={() => void updateWorker?.(true)} title={canApplyUpdate ? "Apply the update" : "Finish editing and saving before updating"}>Update now</button>
           </div>
         )}
         {offlineReady && !updateAvailable && <div className="notice" role="status"><WifiOff size={15} /> DayFlow is ready for offline use on this device.</div>}
@@ -406,7 +424,7 @@ export default function App() {
                 <article className={"task-row" + (task.status === "done" ? " task-complete" : "")} key={task.id}>
                   <button className={"task-complete-button" + (task.status === "done" ? " checked" : "")}
                     aria-label={(task.status === "done" ? "Reopen: " : "Complete: ") + task.title}
-                    onClick={() => void toggleTask(task).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Task update failed."))}>
+                    disabled={pendingWrites > 0} onClick={() => void toggleTask(task).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Task update failed."))}>
                     {task.status === "done" && <Check size={13} />}
                   </button>
                   <button className="task-content" onClick={() => openEditor(task)}>
@@ -416,7 +434,7 @@ export default function App() {
                   <span className={"priority-tag priority-" + task.priority}>{priorityLabels[task.priority]}</span>
                   <span className="task-time">{task.scheduledStart ? task.scheduledStart.slice(0, 5) : task.dueDate ?? "Flexible"}</span>
                   <button className="task-icon-action" aria-label={"Archive: " + task.title}
-                    onClick={() => void archive(task).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Task archive failed."))}>
+                    disabled={pendingWrites > 0} onClick={() => void archive(task).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Task archive failed."))}>
                     <Archive size={15} />
                   </button>
                 </article>
