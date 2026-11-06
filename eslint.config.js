@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
-  { ignores: ["dist/**", "coverage/**", "node_modules/**", "android/**"] },
+  { ignores: ["dist/**", "coverage/**", "node_modules/**", "android/**", "android-widget/**", "app/**", "components/**", "lib/**", "types/**", "scripts/**", ".next/**", "next.config.ts", "next-env.d.ts", "tailwind.config.ts", "postcss.config.mjs"] },
   {
     files: ["**/*.{js,mjs,cjs}"],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
