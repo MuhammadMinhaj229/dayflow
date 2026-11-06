@@ -22,7 +22,7 @@ describe("completionRate", () => {
 
 describe("localDateISO", () => {
   it("returns a valid local calendar date", () => {
-    expect(localDateISO(new Date("2026-11-07T12:00:00.000Z"))).toMatch(/^\\d{4}-\\d{2}-\\d{2}$/);
+    expect(localDateISO(new Date("2026-11-07T12:00:00.000Z"))).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
 
