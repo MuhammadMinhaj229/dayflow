@@ -158,6 +158,7 @@ export default function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
   const [updateWorker, setUpdateWorker] = useState<((reloadPage?: boolean) => Promise<void>) | null>(null);
+  const canApplyUpdate = !editorOpen && pendingWrites === 0 && !loading;
   const [pendingWrites, setPendingWrites] = useState(0);
 
   async function refreshTasks() {
@@ -196,6 +197,13 @@ export default function App() {
     });
     setUpdateWorker(() => update);
   }, []);
+
+  useEffect(() => {
+    if (!updateAvailable || !updateWorker || !canApplyUpdate) return;
+    void updateWorker(true).catch((cause: unknown) => {
+      setDatabaseError(cause instanceof Error ? cause.message : "The app update could not be applied.");
+    });
+  }, [canApplyUpdate, updateAvailable, updateWorker]);
 
   const activeTasks = useMemo(
     () => tasks.filter((task) => task.status !== "done" && task.status !== "cancelled"),
@@ -252,8 +260,6 @@ export default function App() {
       await refreshTasks();
     });
   }
-
-  const canApplyUpdate = !editorOpen && pendingWrites === 0 && !loading;
 
   function openNewTask() {
     setEditingTask(null);
@@ -322,8 +328,7 @@ export default function App() {
 
         {updateAvailable && (
           <div className="notice notice-update" role="status">
-            <RefreshCw size={16} /><span>A DayFlow update is ready. Your local records will be preserved.</span>
-            <button disabled={!canApplyUpdate} onClick={() => void updateWorker?.(true)} title={canApplyUpdate ? "Apply the update" : "Finish editing and saving before updating"}>Update now</button>
+            <RefreshCw size={16} /><span>{canApplyUpdate ? "A DayFlow update is ready and will apply automatically." : "An update is ready and will apply after the current edit or save is complete."}</span>
           </div>
         )}
         {offlineReady && !updateAvailable && <div className="notice" role="status"><WifiOff size={15} /> DayFlow is ready for offline use on this device.</div>}
