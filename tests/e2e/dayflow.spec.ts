@@ -157,7 +157,20 @@ test("separates overdue work from Inbox and supports explicit task status editin
   await page.getByLabel("Title").fill(overdueTitle);
   await page.getByLabel("Due date").fill(yesterday);
   await page.getByRole("button", { name: "Save task" }).click();
-  await expect(page.getByText(overdueTitle).first()).toBeVisible();
+  try {
+    await expect(page.getByText(overdueTitle).first()).toBeVisible({ timeout: 12_000 });
+  } catch (cause) {
+    const diagnostics = {
+      todayLabel: await page.locator(".date-label").innerText(),
+      page: await page.locator("body").innerText(),
+      runtime: await page.locator("[role='alert']").allInnerTexts()
+    };
+    throw new Error(
+      "Overdue task not visible after save. Expected due date: " + yesterday +
+      ". UI diagnostics: " + JSON.stringify(diagnostics),
+      { cause }
+    );
+  }
 
   await page.locator(".task-content").filter({ hasText: overdueTitle }).click();
   const editor = page.getByRole("dialog");
