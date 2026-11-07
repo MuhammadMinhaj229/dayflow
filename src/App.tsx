@@ -384,13 +384,13 @@ export default function App() {
         </a>
         <div className="sidebar-label">WORKSPACE</div>
         <nav className="side-nav" aria-label="Main navigation">
-          <button className={selectedModule === "all" ? "side-link active" : "side-link"} onClick={() => setSelectedModule("all")}>
+          <button className={view === "today" && selectedModule === "all" ? "side-link active" : "side-link"} onClick={() => { setView("today"); setSelectedModule("all"); setSearch(""); }}>
             <LayoutDashboard size={17} /><span>Today</span><span className="nav-number">{activeTasks.length}</span>
           </button>
-          <button className="side-link" onClick={() => { setSelectedModule("all"); setSearch(""); }}>
+          <button className={view === "inbox" ? "side-link active" : "side-link"} onClick={() => { setView("inbox"); setSelectedModule("all"); setSearch(""); }}>
             <Inbox size={17} /><span>Inbox</span>
           </button>
-          <button className="side-link" onClick={() => setSelectedModule("all")}>
+          <button className={view === "upcoming" ? "side-link active" : "side-link"} onClick={() => { setView("upcoming"); setSelectedModule("all"); setSearch(""); }}>
             <CalendarDays size={17} /><span>Upcoming</span>
           </button>
         </nav>
@@ -408,6 +408,9 @@ export default function App() {
             );
           })}
         </nav>
+        <button className={view === "archived" ? "side-link active" : "side-link"} onClick={() => { setView("archived"); setSelectedModule("all"); setSearch(""); }}>
+          <Archive size={17} /><span>Archive</span><span className="nav-number">{archivedTasks.length}</span>
+        </button>
         <div className="sidebar-spacer" />
         <div className="privacy-card">
           <span className="privacy-icon"><Database size={15} /></span>
@@ -421,7 +424,7 @@ export default function App() {
 
       <main className="main-content" id="today">
         <header className="topbar">
-          <div className="crumb"><span>MY WORKSPACE</span><ChevronRight size={13} /><strong>{selectedModule === "all" ? "Today" : moduleName(selectedModule)}</strong></div>
+          <div className="crumb"><span>MY WORKSPACE</span><ChevronRight size={13} /><strong>{view === "today" ? (selectedModule === "all" ? "Today" : moduleName(selectedModule)) : view === "inbox" ? "Inbox" : view === "upcoming" ? "Upcoming" : "Archive"}</strong></div>
           <div className="topbar-actions">
             <div className={online ? "connection-pill" : "connection-pill offline"}>
               {online ? <Wifi size={14} /> : <WifiOff size={14} />}<span>{online ? "Online" : "Offline"}</span>
@@ -506,8 +509,8 @@ export default function App() {
           <div className="task-panel-header">
             <div>
               <span className="eyebrow">YOUR NEXT MOVES</span>
-              <h2>{selectedModule === "all" ? "Today's plan" : moduleName(selectedModule)}</h2>
-              <p>{selectedModule === "all" ? "A clear sequence, not another noisy checklist." : "Tasks and next actions in this area."}</p>
+              <h2>{view === "today" ? (selectedModule === "all" ? "Today's plan" : moduleName(selectedModule)) : view === "inbox" ? "Inbox" : view === "upcoming" ? "Upcoming tasks" : "Archived tasks"}</h2>
+              <p>{view === "today" ? "A clear sequence, not another noisy checklist." : view === "inbox" ? "Unscheduled tasks waiting for a clear next step." : view === "upcoming" ? "Work with a future target date." : "Archived records stay recoverable until you choose otherwise."}</p>
             </div>
             <div className="task-panel-tools">
               <label className="search-box"><Search size={15} />
@@ -542,10 +545,17 @@ export default function App() {
                   </button>
                   <span className={"priority-tag priority-" + task.priority}>{priorityLabels[task.priority]}</span>
                   <span className="task-time">{task.scheduledStart ? task.scheduledStart.slice(0, 5) : task.dueDate ?? "Flexible"}</span>
-                  <button className="task-icon-action" aria-label={"Archive: " + task.title}
-                    disabled={pendingWrites > 0} onClick={() => void archive(task).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Task archive failed."))}>
-                    <Archive size={15} />
-                  </button>
+                  {view === "archived" ? (
+                    <button className="task-icon-action" aria-label={"Restore: " + task.title}
+                      disabled={pendingWrites > 0} onClick={() => void restore(task).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Task restore failed."))}>
+                      <RefreshCw size={15} />
+                    </button>
+                  ) : (
+                    <button className="task-icon-action" aria-label={"Archive: " + task.title}
+                      disabled={pendingWrites > 0} onClick={() => void archive(task).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Task archive failed."))}>
+                      <Archive size={15} />
+                    </button>
+                  )}
                 </article>
               ))}
             </div>
