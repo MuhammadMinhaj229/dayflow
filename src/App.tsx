@@ -347,7 +347,7 @@ export default function App() {
     setEditingProject(null);
   }
 
-  async function archive(project: Project) {
+  async function archiveProjectRecord(project: Project) {
     if (!window.confirm("Archive " + project.name + "? Its tasks will remain available in the task archive.")) return;
     await withPendingWrite(async () => {
       await archiveProject(project.id);
@@ -533,7 +533,7 @@ export default function App() {
                   </div>
                   <div className="project-card-actions">
                     <button type="button" onClick={() => openProjectEditor(project)}>Edit</button>
-                    <button type="button" onClick={() => void archive(project).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Project archive failed."))}>Archive</button>
+                    <button type="button" onClick={() => void archiveProjectRecord(project).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Project archive failed."))}>Archive</button>
                   </div>
                 </article>
               ))}
