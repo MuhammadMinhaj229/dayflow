@@ -175,6 +175,19 @@ describe("project lifecycle", () => {
     expect(history.map((event) => event.eventType)).toEqual(["project.restored", "project.archived", "project.created"]);
   });
 
+  it("prevents restoring a project-batched task without its archived project", async () => {
+    const project = await createProject(projectDraft);
+    const task = await createTask(taskDraft({ title: "Task from archived project", projectId: project.id }));
+    await archiveProject(project.id);
+
+    await expect(restoreTask(task.id)).rejects.toThrow(/restore the project from the archive/i);
+    expect(await listTasks()).toHaveLength(0);
+    expect(await listArchivedProjects()).toHaveLength(1);
+
+    await restoreProject(project.id);
+    expect((await listTasks()).map((item) => item.id)).toEqual([task.id]);
+  });
+
   it("prevents changing a project module while active or archived tasks remain linked", async () => {
     const project = await createProject(projectDraft);
     const task = await createTask(taskDraft({ projectId: project.id }));

@@ -358,6 +358,15 @@ export async function restoreTask(id: string): Promise<void> {
     );
     if (!anchor.rows[0]) throw new Error("This archived task could not be restored.");
     const batchId = anchor.rows[0].archive_batch_id;
+    if (batchId) {
+      const projectBatch = await tx.query<{ id: string }>(
+        "SELECT id FROM projects WHERE archive_batch_id=$1 AND archived_at IS NOT NULL LIMIT 1",
+        [batchId]
+      );
+      if (projectBatch.rows[0]) {
+        throw new Error("This task was archived with its project. Restore the project from the archive to recover the complete task group.");
+      }
+    }
     const restored = batchId
       ? await tx.query<{ id: string }>(
           "UPDATE tasks SET archived_at=NULL, archive_batch_id=NULL, updated_at=$2 " +

@@ -45,7 +45,7 @@ function TaskEditor({
   task: Task | null;
   defaultDate: string;
   onClose: () => void;
-  onSave: (draft: TaskDraft) => Promise<void>;
+  onSave: (draft: TaskDraft, status: TaskStatus) => Promise<void>;
   projects: Project[];
   tasks: Task[];
 }) {
@@ -65,6 +65,7 @@ function TaskEditor({
     progress: task.progress,
     notes: task.notes
   } : createEmptyTaskDraft(defaultDate));
+  const [status, setStatus] = useState<TaskStatus>(() => task?.status ?? "next");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [history, setHistory] = useState<TaskEvent[]>([]);
@@ -98,7 +99,7 @@ function TaskEditor({
     setError("");
     setSaving(true);
     try {
-      await onSave(draft);
+      await onSave(draft, status);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The task could not be saved.");
     } finally {
@@ -137,6 +138,15 @@ function TaskEditor({
               <span>Priority</span>
               <select value={draft.priority} onChange={(event) => update("priority", event.target.value as TaskDraft["priority"])}>
                 {Object.entries(priorityLabels).map(([key, label]) => <option value={key} key={key}>{label}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span>Status</span>
+              <select value={status} onChange={(event) => setStatus(event.target.value as TaskStatus)}>
+                <option value="next">Next</option>
+                <option value="in_progress">In progress</option>
+                <option value="done">Done</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </label>
             <label className="field">
@@ -352,14 +362,14 @@ export default function App() {
     [tasks]
   );
   const todaysTasks = useMemo(
-    () => tasks.filter((task) => (task.dueDate === today || task.dueDate === null) && task.parentTaskId === null),
+    () => tasks.filter((task) => task.dueDate === today),
     [tasks, today]
   );
   const viewTasks = useMemo(() => {
     if (view === "archived") return archivedTasks;
-    if (view === "inbox") return tasks.filter((task) => task.dueDate === null && task.projectId === null && task.parentTaskId === null);
+    if (view === "inbox") return tasks.filter((task) => task.dueDate === null);
     if (view === "upcoming") return tasks.filter((task) => task.dueDate !== null && task.dueDate > today);
-    return tasks.filter((task) => task.dueDate === today || task.dueDate === null);
+    return tasks.filter((task) => task.dueDate !== null && task.dueDate <= today);
   }, [archivedTasks, tasks, today, view]);
   const visibleTasks = useMemo(() => {
     const selected = selectedModule === "all" ? viewTasks : viewTasks.filter((task) => task.moduleKey === selectedModule);
@@ -389,10 +399,15 @@ export default function App() {
     }
   }
 
-  async function saveTask(draft: TaskDraft) {
+  async function saveTask(draft: TaskDraft, status: TaskStatus) {
     await withPendingWrite(async () => {
-      if (editingTask) await updateTask(editingTask.id, draft);
-      else await createTask(draft);
+      if (editingTask) {
+        await updateTask(editingTask.id, draft);
+        if (editingTask.status !== status) await setTaskStatus(editingTask.id, status);
+      } else {
+        const created = await createTask(draft);
+        if (status !== "next") await setTaskStatus(created.id, status);
+      }
       await refreshWorkspace();
     });
     setEditorOpen(false);
@@ -655,7 +670,7 @@ export default function App() {
             <div>
               <span className="eyebrow">YOUR NEXT MOVES</span>
               <h2>{view === "today" ? (selectedModule === "all" ? "Today's plan" : moduleName(selectedModule)) : view === "inbox" ? "Inbox" : view === "upcoming" ? "Upcoming tasks" : "Archived tasks"}</h2>
-              <p>{view === "today" ? "A clear sequence, not another noisy checklist." : view === "inbox" ? "Unscheduled tasks waiting for a clear next step." : view === "upcoming" ? "Work with a future target date." : "Archived records stay recoverable until you choose otherwise."}</p>
+              <p>{view === "today" ? "Overdue items and work due today, in one place." : view === "inbox" ? "Undated tasks waiting for a clear next step." : view === "upcoming" ? "Work with a future target date." : "Archived records stay recoverable until you choose otherwise."}</p>
             </div>
             <div className="task-panel-tools">
               <label className="search-box"><Search size={15} />
