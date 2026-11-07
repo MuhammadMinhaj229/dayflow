@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("creates a task, persists it through reload, and completes it", async ({ page }) => {
+test("creates a task, persists it through reload, and completes it offline", async ({ page, context }) => {
   const runtimeErrors: string[] = [];
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
   page.on("console", (message) => {
@@ -27,8 +27,22 @@ test("creates a task, persists it through reload, and completes it", async ({ pa
     );
   }
 
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    if (!navigator.serviceWorker.controller) {
+      await new Promise<void>((resolve) => {
+        const controllerChanged = () => resolve();
+        navigator.serviceWorker.addEventListener("controllerchange", controllerChanged, { once: true });
+        if (navigator.serviceWorker.controller) resolve();
+      });
+    }
+  });
+
+  await context.setOffline(true);
   await page.reload();
+  await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
   await expect(page.getByText(title).first()).toBeVisible();
+  await expect(page.locator(".connection-pill.offline")).toBeVisible();
 
   await page.getByRole("button", { name: "Complete: " + title }).click();
   await expect(page.getByRole("button", { name: "Reopen: " + title })).toBeVisible();
