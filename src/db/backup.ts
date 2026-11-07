@@ -235,14 +235,18 @@ export async function createEncryptedBackup(passphrase: string): Promise<Blob> {
     db.query<PlainRecord>("SELECT id,title,details,module_key,project_id,parent_task_id,order_index,status,priority,due_date::text AS due_date,scheduled_start::text AS scheduled_start,estimated_minutes,next_action,blocker,progress,notes,completed_at::text AS completed_at,archived_at::text AS archived_at,created_at::text AS created_at,updated_at::text AS updated_at FROM tasks ORDER BY id"),
     db.query<PlainRecord>("SELECT id,task_id,event_type,metadata,created_at::text AS created_at FROM task_events ORDER BY id")
   ]);
-
-  const payload = validateBackupPayload({
+  return encryptBackupPayload({
     schemaVersion: DATABASE_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     projects: projects.rows,
     tasks: tasks.rows,
     taskEvents: events.rows
-  });
+  }, passphrase);
+}
+
+export async function encryptBackupPayload(value: unknown, passphrase: string): Promise<Blob> {
+  validatePassphrase(passphrase);
+  const payload = validateBackupPayload(value);
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
   if (plaintext.byteLength > MAX_BACKUP_BYTES) throw new Error("This workspace is too large for a single browser backup.");
 
@@ -288,10 +292,7 @@ function validateEnvelope(value: unknown): BackupEnvelope {
   return value as unknown as BackupEnvelope;
 }
 
-export async function restoreEncryptedBackup(file: File, passphrase: string): Promise<{
-  projectCount: number;
-  taskCount: number;
-}> {
+export async function decryptBackupFile(file: File, passphrase: string): Promise<BackupPayload> {
   validatePassphrase(passphrase);
   if (file.size <= 0 || file.size > MAX_BACKUP_BYTES + 64 * 1024) {
     throw new Error("The selected backup is empty or larger than 50 MB.");
@@ -328,7 +329,14 @@ export async function restoreEncryptedBackup(file: File, passphrase: string): Pr
   } catch {
     throw new Error("The decrypted backup contents are invalid.");
   }
-  const payload = validateBackupPayload(payloadUnknown);
+  return validateBackupPayload(payloadUnknown);
+}
+
+export async function restoreEncryptedBackup(file: File, passphrase: string): Promise<{
+  projectCount: number;
+  taskCount: number;
+}> {
+  const payload = await decryptBackupFile(file, passphrase);
   const db = await getDatabase();
 
   await db.transaction(async (tx) => {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createEncryptedBackup,
+  decryptBackupFile,
+  encryptBackupPayload,
   restoreEncryptedBackup,
   validateBackupPayload
 } from "./backup";
@@ -90,6 +92,25 @@ describe("encrypted backup validation", () => {
 describe("backup encryption contract", () => {
   it("requires a strong passphrase", async () => {
     await expect(createEncryptedBackup("short")).rejects.toThrow(/12 characters/i);
+  });
+
+  it("encrypts and decrypts a valid backup payload", async () => {
+    const passphrase = "a secure long passphrase 2026";
+    const blob = await encryptBackupPayload(validPayload, passphrase);
+    const file = new File([await blob.arrayBuffer()], "dayflow.dayflow", {
+      type: "application/vnd.dayflow.backup+json"
+    });
+    const restored = await decryptBackupFile(file, passphrase);
+    expect(restored.projects).toHaveLength(1);
+    expect(restored.tasks[0]?.title).toBe("Parent task");
+  });
+
+  it("rejects a wrong passphrase before a restore transaction can start", async () => {
+    const blob = await encryptBackupPayload(validPayload, "a secure long passphrase 2026");
+    const file = new File([await blob.arrayBuffer()], "dayflow.dayflow", {
+      type: "application/vnd.dayflow.backup+json"
+    });
+    await expect(decryptBackupFile(file, "a different incorrect passphrase")).rejects.toThrow(/passphrase is incorrect/i);
   });
 
   it("rejects a file that is not an encrypted DayFlow backup", async () => {
