@@ -85,9 +85,9 @@ describe("encrypted backup validation", () => {
   it("upgrades version 2 backup payloads without losing existing records", () => {
     const legacy = clonePayload();
     legacy.schemaVersion = 2;
-    delete legacy.projectEvents;
-    delete legacy.projects[0]?.archive_batch_id;
-    delete legacy.tasks[0]?.archive_batch_id;
+    legacy.projectEvents = [];
+    if (legacy.projects[0]) legacy.projects[0].archive_batch_id = undefined;
+    if (legacy.tasks[0]) legacy.tasks[0].archive_batch_id = undefined;
 
     const checked = validateBackupPayload(legacy);
     expect(checked.schemaVersion).toBe(3);
