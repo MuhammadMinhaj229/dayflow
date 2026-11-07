@@ -136,6 +136,54 @@ test("creates a task, persists it through reload, and completes it offline", asy
   await expect(taskDialog.getByText("Status: next → done")).toBeVisible();
 });
 
+test("separates overdue work from Inbox and supports explicit task status editing", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
+
+  const yesterday = await page.evaluate(() => {
+    const date = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date);
+    const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? "";
+    return part("year") + "-" + part("month") + "-" + part("day");
+  });
+
+  const overdueTitle = "Overdue task " + Date.now();
+  await page.getByRole("button", { name: "New task" }).click();
+  await page.getByLabel("Title").fill(overdueTitle);
+  await page.getByLabel("Due date").fill(yesterday);
+  await page.getByRole("button", { name: "Save task" }).click();
+  await expect(page.getByText(overdueTitle).first()).toBeVisible();
+
+  await page.locator(".task-content").filter({ hasText: overdueTitle }).click();
+  const editor = page.getByRole("dialog");
+  await editor.getByLabel("Status").selectOption("in_progress");
+  await editor.getByRole("button", { name: "Save task" }).click();
+
+  await page.locator(".task-content").filter({ hasText: overdueTitle }).click();
+  await expect(page.getByRole("dialog").getByText("Status: next → in progress")).toBeVisible();
+  await page.getByRole("button", { name: "Close editor" }).click();
+
+  const inboxTitle = "Unscheduled inbox task " + Date.now();
+  await page.getByRole("button", { name: "New task" }).click();
+  await page.getByLabel("Title").fill(inboxTitle);
+  await page.getByLabel("Due date").fill("");
+  await page.getByRole("button", { name: "Save task" }).click();
+
+  const sidebar = page.locator(".sidebar");
+  await sidebar.getByRole("button", { name: "Inbox" }).click();
+  await expect(page.getByText(inboxTitle).first()).toBeVisible();
+  await expect(page.getByText(overdueTitle)).toHaveCount(0);
+
+  await sidebar.getByRole("button", { name: "Today" }).click();
+  await expect(page.getByText(overdueTitle).first()).toBeVisible();
+  await expect(page.getByText(inboxTitle)).toHaveCount(0);
+});
+
 test("shows project activity history when editing an existing project", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
