@@ -11,7 +11,7 @@ import {
   localDateISO, moduleName, type ModuleKey, type Task, type TaskDraft
 } from "./domain/task";
 import { archiveTask, createTask, listArchivedTasks, listTasks, restoreTask, setTaskStatus, updateTask } from "./db/task-repository";
-import { archiveProject, createProject, listProjects, updateProject } from "./db/project-repository";
+import { archiveProject, createProject, listArchivedProjects, listProjects, restoreProject, updateProject } from "./db/project-repository";
 import { ProjectEditor } from "./components/ProjectEditor";
 import { BackupPanel } from "./components/BackupPanel";
 import { StorageStatus } from "./components/StorageStatus";
@@ -191,6 +191,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [archivedTasks, setArchivedTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [archivedProjects, setArchivedProjects] = useState<Project[]>([]);
   const [view, setView] = useState<"today" | "inbox" | "upcoming" | "archived">("today");
   const [projectEditorOpen, setProjectEditorOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -210,24 +211,27 @@ export default function App() {
 
   async function refreshWorkspace() {
     setDatabaseError("");
-    const [taskRows, projectRows, archivedRows] = await Promise.all([
+    const [taskRows, projectRows, archivedRows, archivedProjectRows] = await Promise.all([
       listTasks(),
       listProjects({ includeCompleted: true }),
-      listArchivedTasks()
+      listArchivedTasks(),
+      listArchivedProjects()
     ]);
     setTasks(taskRows);
     setProjects(projectRows);
     setArchivedTasks(archivedRows);
+    setArchivedProjects(archivedProjectRows);
   }
 
   useEffect(() => {
     let active = true;
-    void Promise.all([listTasks(), listProjects({ includeCompleted: true }), listArchivedTasks()])
-      .then(([taskRows, projectRows, archivedRows]) => {
+    void Promise.all([listTasks(), listProjects({ includeCompleted: true }), listArchivedTasks(), listArchivedProjects()])
+      .then(([taskRows, projectRows, archivedRows, archivedProjectRows]) => {
         if (!active) return;
         setTasks(taskRows);
         setProjects(projectRows);
         setArchivedTasks(archivedRows);
+        setArchivedProjects(archivedProjectRows);
       })
       .catch((cause: unknown) => {
         if (active) setDatabaseError(cause instanceof Error ? cause.message : "Local storage could not be opened.");
@@ -288,10 +292,10 @@ export default function App() {
       (task.nextAction ?? "").toLocaleLowerCase().includes(term)
     );
   }, [search, selectedModule, viewTasks]);
-  const visibleProjects = useMemo(
-    () => selectedModule === "all" ? projects : projects.filter((project) => project.moduleKey === selectedModule),
-    [projects, selectedModule]
-  );
+  const visibleProjects = useMemo(() => {
+    const source = view === "archived" ? archivedProjects : projects;
+    return selectedModule === "all" ? source : source.filter((project) => project.moduleKey === selectedModule);
+  }, [archivedProjects, projects, selectedModule, view]);
 
   const todayRate = completionRate(todaysTasks);
   const urgentCount = activeTasks.filter((task) => task.priority === "urgent" || task.priority === "high").length;
