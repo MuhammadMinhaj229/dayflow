@@ -10,6 +10,7 @@ import android.system.Os;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.JSObject;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -277,6 +278,63 @@ public final class DayFlowNativePlugin extends Plugin {
             call.resolve(selected);
         } catch (Exception error) {
             call.reject("DayFlow could not read the selected backup.", error);
+        } finally {
+            if (bytes != null) Arrays.fill(bytes, (byte) 0);
+        }
+    }
+
+    @PluginMethod
+    public void listPrivateBackups(PluginCall call) {
+        try {
+            File[] files = backupDirectory().listFiles((directory, name) -> validFileName(name));
+            if (files == null) files = new File[0];
+            Arrays.sort(files, (left, right) -> Long.compare(right.lastModified(), left.lastModified()));
+
+            JSArray backups = new JSArray();
+            for (File file : files) {
+                if (!file.isFile() || file.length() <= 0 || file.length() > MAX_BACKUP_BYTES) continue;
+                JSObject item = new JSObject();
+                item.put("fileName", file.getName());
+                item.put("bytes", file.length());
+                item.put("modifiedAt", file.lastModified());
+                backups.put(item);
+            }
+
+            JSObject result = new JSObject();
+            result.put("backups", backups);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("DayFlow could not list its private backups.", error);
+        }
+    }
+
+    @PluginMethod
+    public void readPrivateBackup(PluginCall call) {
+        byte[] bytes = null;
+        try {
+            String name = call.getString("fileName");
+            if (!validFileName(name)) {
+                call.reject("The selected private backup name is invalid.");
+                return;
+            }
+
+            File file = new File(backupDirectory(), name);
+            if (!file.isFile() || file.length() <= 0 || file.length() > MAX_BACKUP_BYTES) {
+                call.reject("The selected private backup is missing or exceeds the supported size.");
+                return;
+            }
+
+            try (InputStream input = new FileInputStream(file)) {
+                bytes = readLimited(input, MAX_BACKUP_BYTES);
+            }
+
+            JSObject result = new JSObject();
+            result.put("fileName", file.getName());
+            result.put("bytes", bytes.length);
+            result.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("DayFlow could not read the private backup.", error);
         } finally {
             if (bytes != null) Arrays.fill(bytes, (byte) 0);
         }

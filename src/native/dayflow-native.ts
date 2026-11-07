@@ -26,6 +26,22 @@ interface PickResult {
   bytes?: number;
 }
 
+export interface PrivateBackupInfo {
+  fileName: string;
+  bytes: number;
+  modifiedAt: number;
+}
+
+interface PrivateBackupList {
+  backups: PrivateBackupInfo[];
+}
+
+interface PrivateBackupContent {
+  fileName: string;
+  bytes: number;
+  base64: string;
+}
+
 interface EncryptedSecret {
   iv: string;
   ciphertext: string;
@@ -40,6 +56,8 @@ interface DayFlowNativePlugin {
   saveBackup(options: { fileName: string; base64: string }): Promise<SavedBackupResult>;
   exportBackup(options: { fileName: string; base64: string }): Promise<ExportResult>;
   pickBackup(): Promise<PickResult>;
+  listPrivateBackups(): Promise<PrivateBackupList>;
+  readPrivateBackup(options: { fileName: string }): Promise<PrivateBackupContent>;
   encryptSecret(options: { alias: string; plaintext: string }): Promise<EncryptedSecret>;
   decryptSecret(options: { alias: string; iv: string; ciphertext: string }): Promise<DecryptedSecret>;
   deleteSecret(options: { alias: string }): Promise<void>;
@@ -106,6 +124,23 @@ export async function pickBackupWithAndroidPicker(): Promise<File | null> {
   const safeBytes = new Uint8Array(bytes.byteLength);
   safeBytes.set(bytes);
   return new File([safeBytes.buffer], selected.fileName ?? "selected.dayflow", {
+    type: "application/vnd.dayflow.backup+json"
+  });
+}
+
+export async function listAndroidPrivateBackups(): Promise<PrivateBackupInfo[]> {
+  if (!isAndroidNative()) return [];
+  const result = await Native.listPrivateBackups();
+  return result.backups;
+}
+
+export async function readAndroidPrivateBackup(fileName: string): Promise<File> {
+  if (!isAndroidNative()) throw new Error("Android private storage is unavailable on this platform.");
+  const selected = await Native.readPrivateBackup({ fileName });
+  const bytes = fromBase64(selected.base64);
+  const safeBytes = new Uint8Array(bytes.byteLength);
+  safeBytes.set(bytes);
+  return new File([safeBytes.buffer], selected.fileName, {
     type: "application/vnd.dayflow.backup+json"
   });
 }

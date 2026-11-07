@@ -1,15 +1,40 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createEncryptedBackup, restoreEncryptedBackup } from "../db/backup";
-import { exportBackupWithAndroidPicker, isAndroidNative, pickBackupWithAndroidPicker, saveBackupToAndroidPrivateStorage } from "../native/dayflow-native";
+import {
+  exportBackupWithAndroidPicker,
+  isAndroidNative,
+  listAndroidPrivateBackups,
+  pickBackupWithAndroidPicker,
+  readAndroidPrivateBackup,
+  saveBackupToAndroidPrivateStorage,
+  type PrivateBackupInfo
+} from "../native/dayflow-native";
 
 export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> }) {
   const [exportPassphrase, setExportPassphrase] = useState("");
   const [confirmPassphrase, setConfirmPassphrase] = useState("");
   const [restorePassphrase, setRestorePassphrase] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [privateBackups, setPrivateBackups] = useState<PrivateBackupInfo[]>([]);
+  const [selectedPrivateBackup, setSelectedPrivateBackup] = useState("");
+  const [privateBackupsError, setPrivateBackupsError] = useState("");
   const [busy, setBusy] = useState<"export" | "restore" | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  async function refreshPrivateBackups() {
+    if (!isAndroidNative()) return;
+    try {
+      setPrivateBackups(await listAndroidPrivateBackups());
+      setPrivateBackupsError("");
+    } catch (cause) {
+      setPrivateBackupsError(cause instanceof Error ? cause.message : "Private backups could not be listed.");
+    }
+  }
+
+  useEffect(() => {
+    void refreshPrivateBackups();
+  }, []);
 
   async function exportBackup() {
     setError("");
@@ -21,9 +46,11 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
     setBusy("export");
     try {
       const blob = await createEncryptedBackup(exportPassphrase);
-      const fileName = "dayflow-backup-" + new Date().toISOString().slice(0, 10) + ".dayflow";
+      const timestamp = new Date().toISOString().slice(0, 19).replaceAll("-", "").replaceAll(":", "");
+      const fileName = "dayflow-backup-" + timestamp + ".dayflow";
       if (isAndroidNative()) {
         await saveBackupToAndroidPrivateStorage(blob, fileName);
+        await refreshPrivateBackups();
         const exported = await exportBackupWithAndroidPicker(blob, fileName);
         setMessage(exported.exported
           ? "Encrypted backup saved in DayFlow's private workspace and exported to your chosen location."
@@ -52,7 +79,14 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
     setError("");
     setMessage("");
     let fileToRestore = selectedFile;
-    if (!fileToRestore && isAndroidNative()) {
+    if (isAndroidNative() && selectedPrivateBackup) {
+      try {
+        fileToRestore = await readAndroidPrivateBackup(selectedPrivateBackup);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "The private backup could not be read.");
+        return;
+      }
+    } else if (!fileToRestore && isAndroidNative()) {
       try {
         fileToRestore = await pickBackupWithAndroidPicker();
       } catch (cause) {
@@ -73,7 +107,9 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
       await onRestored();
       setMessage("Restore completed: " + counts.projectCount + " projects and " + counts.taskCount + " tasks are now in this workspace.");
       setSelectedFile(null);
+      setSelectedPrivateBackup("");
       setRestorePassphrase("");
+      await refreshPrivateBackups();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The backup could not be restored.");
     } finally {
@@ -115,10 +151,27 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
           {isAndroidNative() ? (
             <div className="field">
               <span>DayFlow backup file</span>
+              <select value={selectedPrivateBackup} disabled={busy !== null || privateBackups.length === 0}
+                onChange={(event) => {
+                  setSelectedPrivateBackup(event.target.value);
+                  setSelectedFile(null);
+                }}>
+                <option value="">Choose a saved private backup</option>
+                {privateBackups.map((backup) => (
+                  <option key={backup.fileName} value={backup.fileName}>
+                    {backup.fileName} · {(backup.bytes / (1024 * 1024)).toFixed(1)} MB
+                  </option>
+                ))}
+              </select>
               <button className="button button-outline" type="button" disabled={busy !== null}
-                onClick={() => void pickBackupWithAndroidPicker().then(setSelectedFile).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "The backup could not be selected."))}>
-                {selectedFile ? selectedFile.name : "Choose backup from device"}
+                onClick={() => void pickBackupWithAndroidPicker().then((file) => {
+                  setSelectedFile(file);
+                  setSelectedPrivateBackup("");
+                }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "The backup could not be selected."))}>
+                {selectedFile ? selectedFile.name : "Choose external backup"}
               </button>
+              {privateBackupsError && <span className="form-error" role="status">{privateBackupsError}</span>}
+              {privateBackups.length === 0 && !privateBackupsError && <span className="history-empty">No private backups saved yet.</span>}
             </div>
           ) : (
             <label className="field">
@@ -132,7 +185,7 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
             <input type="password" autoComplete="current-password" value={restorePassphrase}
               onChange={(event) => setRestorePassphrase(event.target.value)} />
           </label>
-          <button className="button button-outline" type="button" disabled={busy !== null || (!selectedFile && !isAndroidNative()) || restorePassphrase.length < 12}
+          <button className="button button-outline" type="button" disabled={busy !== null || (!selectedFile && !selectedPrivateBackup && !isAndroidNative()) || restorePassphrase.length < 12}
             onClick={() => void restoreBackup()}>
             {busy === "restore" ? "Validating and restoring…" : "Restore workspace"}
           </button>
