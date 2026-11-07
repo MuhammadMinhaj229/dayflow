@@ -45,6 +45,12 @@ const TASK_COLUMNS =
   "next_action, blocker, progress::float8 AS progress, notes, " +
   "created_at::text AS created_at, updated_at::text AS updated_at";
 
+const DRAFT_FIELDS = [
+  "title", "details", "moduleKey", "projectId", "parentTaskId", "orderIndex",
+  "priority", "dueDate", "scheduledStart", "estimatedMinutes",
+  "nextAction", "blocker", "progress", "notes"
+] as const;
+
 function mapTask(row: TaskRow): Task {
   return {
     id: row.id,
@@ -83,6 +89,9 @@ function normaliseDraft(draft: TaskDraft): TaskDraft {
   if (estimate !== null && (!Number.isInteger(estimate) || estimate < 1 || estimate > 100000)) {
     throw new Error("Estimate must be a whole number between 1 and 100,000 minutes.");
   }
+  if (!Number.isInteger(draft.orderIndex) || draft.orderIndex < 0) {
+    throw new Error("Task order must be a non-negative integer.");
+  }
 
   return {
     ...draft,
@@ -96,7 +105,6 @@ function normaliseDraft(draft: TaskDraft): TaskDraft {
     dueDate: nullable(draft.dueDate),
     scheduledStart: nullable(draft.scheduledStart),
     estimatedMinutes: estimate,
-    orderIndex: Number.isInteger(draft.orderIndex) ? draft.orderIndex : 0,
     progress: Math.min(100, Math.max(0, Number.isFinite(progress) ? progress : 0))
   };
 }
@@ -113,22 +121,65 @@ async function validateReferences(
     );
     const row = project.rows[0];
     if (!row || row.archived_at) throw new Error("Select an active project.");
-    if (row.module_key !== draft.moduleKey) throw new Error("A task and its project must belong to the same module.");
-  }
-
-  if (draft.parentTaskId) {
-    if (draft.parentTaskId === currentTaskId) throw new Error("A task cannot be its own parent.");
-    const parent = await tx.query<{ module_key: ModuleKey; project_id: string | null; id: string }>(
-      "SELECT id, module_key, project_id FROM tasks WHERE id = $1 AND archived_at IS NULL",
-      [draft.parentTaskId]
-    );
-    const row = parent.rows[0];
-    if (!row) throw new Error("Select an active parent task.");
-    if (row.module_key !== draft.moduleKey) throw new Error("A subtask must belong to the same module as its parent.");
-    if ((row.project_id ?? null) !== (draft.projectId ?? null)) {
-      throw new Error("A subtask must belong to the same project as its parent.");
+    if (row.module_key !== draft.moduleKey) {
+      throw new Error("A task and its project must belong to the same module.");
     }
   }
+
+  if (!draft.parentTaskId) return;
+  if (draft.parentTaskId === currentTaskId) throw new Error("A task cannot be its own parent.");
+
+  const parent = await tx.query<{ module_key: ModuleKey; project_id: string | null; id: string }>(
+    "SELECT id, module_key, project_id FROM tasks WHERE id = $1 AND archived_at IS NULL",
+    [draft.parentTaskId]
+  );
+  const row = parent.rows[0];
+  if (!row) throw new Error("Select an active parent task.");
+  if (row.module_key !== draft.moduleKey) {
+    throw new Error("A subtask must belong to the same module as its parent.");
+  }
+  if ((row.project_id ?? null) !== (draft.projectId ?? null)) {
+    throw new Error("A subtask must belong to the same project as its parent.");
+  }
+
+  if (currentTaskId) {
+    const cycle = await tx.query<{ creates_cycle: boolean }>(
+      "WITH RECURSIVE ancestors(id, parent_task_id) AS (" +
+        "SELECT id, parent_task_id FROM tasks WHERE id=$1 " +
+        "UNION " +
+        "SELECT parent.id, parent.parent_task_id FROM tasks parent " +
+        "JOIN ancestors child ON parent.id=child.parent_task_id" +
+      ") SELECT EXISTS(SELECT 1 FROM ancestors WHERE id=$2) AS creates_cycle",
+      [draft.parentTaskId, currentTaskId]
+    );
+    if (cycle.rows[0]?.creates_cycle) {
+      throw new Error("This parent would create a circular subtask relationship.");
+    }
+  }
+}
+
+function changedFields(previous: Task, next: TaskDraft): Record<string, { from: unknown; to: unknown }> {
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  for (const key of DRAFT_FIELDS) {
+    if (previous[key] !== next[key]) {
+      changes[key] = { from: previous[key], to: next[key] };
+    }
+  }
+  return changes;
+}
+
+async function insertEvent(
+  tx: Transaction,
+  taskId: string,
+  eventType: string,
+  metadata: Record<string, unknown>,
+  timestamp: string
+): Promise<void> {
+  await tx.query(
+    "INSERT INTO task_events (id, task_id, event_type, metadata, created_at) " +
+      "VALUES ($1,$2,$3,$4::jsonb,$5)",
+    [crypto.randomUUID(), taskId, eventType, JSON.stringify(metadata), timestamp]
+  );
 }
 
 export async function listTasks(options: { includeArchived?: boolean; moduleKey?: ModuleKey } = {}): Promise<Task[]> {
@@ -143,9 +194,9 @@ export async function listTasks(options: { includeArchived?: boolean; moduleKey?
   const where = clauses.length > 0 ? " WHERE " + clauses.join(" AND ") : "";
   const result = await db.query<TaskRow>(
     "SELECT " + TASK_COLUMNS + " FROM tasks" + where +
-    " ORDER BY order_index ASC, (due_date IS NULL), due_date ASC, " +
-    "CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, " +
-    "created_at ASC",
+      " ORDER BY order_index ASC, (due_date IS NULL), due_date ASC, " +
+      "CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, " +
+      "created_at ASC",
     values
   );
   return result.rows.map(mapTask);
@@ -154,7 +205,7 @@ export async function listTasks(options: { includeArchived?: boolean; moduleKey?
 export async function listArchivedTasks(): Promise<Task[]> {
   const db = await getDatabase();
   const result = await db.query<TaskRow>(
-    "SELECT " + TASK_COLUMNS + " FROM tasks WHERE archived_at IS NOT NULL ORDER BY archived_at DESC"
+    "SELECT " + TASK_COLUMNS + " FROM tasks WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, order_index ASC"
   );
   return result.rows.map(mapTask);
 }
@@ -180,12 +231,7 @@ export async function createTask(input: TaskDraft): Promise<Task> {
       ]
     );
 
-    await tx.query(
-      "INSERT INTO task_events (id, task_id, event_type, metadata, created_at) " +
-        "VALUES ($1,$2,'task.created',$3::jsonb,$4)",
-      [crypto.randomUUID(), id, JSON.stringify({ title: draft.title, moduleKey: draft.moduleKey }), timestamp]
-    );
-
+    await insertEvent(tx, id, "task.created", { title: draft.title, moduleKey: draft.moduleKey }, timestamp);
     const row = result.rows[0];
     if (!row) throw new Error("The task could not be created.");
     return mapTask(row);
@@ -198,7 +244,18 @@ export async function updateTask(id: string, input: TaskDraft): Promise<Task> {
   const timestamp = new Date().toISOString();
 
   return db.transaction(async (tx) => {
+    const current = await tx.query<TaskRow>(
+      "SELECT " + TASK_COLUMNS + " FROM tasks WHERE id=$1 AND archived_at IS NULL FOR UPDATE",
+      [id]
+    );
+    const existing = current.rows[0];
+    if (!existing) throw new Error("This task no longer exists or has been archived.");
+
     await validateReferences(tx, draft, id);
+    const previous = mapTask(existing);
+    const changes = changedFields(previous, draft);
+    if (Object.keys(changes).length === 0) return previous;
+
     const result = await tx.query<TaskRow>(
       "UPDATE tasks SET title=$2, details=$3, module_key=$4, project_id=$5, parent_task_id=$6, " +
         "order_index=$7, priority=$8, due_date=$9, scheduled_start=$10, estimated_minutes=$11, " +
@@ -212,13 +269,8 @@ export async function updateTask(id: string, input: TaskDraft): Promise<Task> {
     );
 
     const row = result.rows[0];
-    if (!row) throw new Error("This task no longer exists or has been archived.");
-
-    await tx.query(
-      "INSERT INTO task_events (id, task_id, event_type, metadata, created_at) " +
-        "VALUES ($1,$2,'task.updated',$3::jsonb,$4)",
-      [crypto.randomUUID(), id, JSON.stringify({ title: draft.title, moduleKey: draft.moduleKey }), timestamp]
-    );
+    if (!row) throw new Error("The task could not be updated.");
+    await insertEvent(tx, id, "task.updated", { changes }, timestamp);
     return mapTask(row);
   });
 }
@@ -228,66 +280,84 @@ export async function setTaskStatus(id: string, status: TaskStatus): Promise<voi
   const timestamp = new Date().toISOString();
 
   await db.transaction(async (tx) => {
-    const result = await tx.query<{ id: string }>(
+    const result = await tx.query<{ id: string; status: TaskStatus }>(
       "UPDATE tasks SET status=$2, completed_at=$3, " +
         "progress=CASE WHEN $2='done' THEN 100 ELSE CASE WHEN progress=100 THEN 0 ELSE progress END END, " +
-        "updated_at=$4 WHERE id=$1 AND archived_at IS NULL RETURNING id",
+        "updated_at=$4 WHERE id=$1 AND archived_at IS NULL RETURNING id,status",
       [id, status, status === "done" ? timestamp : null, timestamp]
     );
-    if (result.rows.length === 0) throw new Error("The task could not be updated.");
-
-    await tx.query(
-      "INSERT INTO task_events (id, task_id, event_type, metadata, created_at) " +
-        "VALUES ($1,$2,'task.status_changed',$3::jsonb,$4)",
-      [crypto.randomUUID(), id, JSON.stringify({ status }), timestamp]
-    );
+    const row = result.rows[0];
+    if (!row) throw new Error("The task could not be updated.");
+    await insertEvent(tx, id, "task.status_changed", { from: row.status, to: status }, timestamp);
   });
 }
 
 export async function archiveTask(id: string): Promise<void> {
   const db = await getDatabase();
   const timestamp = new Date().toISOString();
+  const batchId = crypto.randomUUID();
 
   await db.transaction(async (tx) => {
     const result = await tx.query<{ id: string }>(
-      "UPDATE tasks SET archived_at=$2, updated_at=$2 WHERE id=$1 AND archived_at IS NULL RETURNING id",
-      [id, timestamp]
+      "WITH RECURSIVE descendants(id) AS (" +
+        "SELECT id FROM tasks WHERE id=$1 AND archived_at IS NULL " +
+        "UNION " +
+        "SELECT child.id FROM tasks child JOIN descendants parent ON child.parent_task_id=parent.id " +
+        "WHERE child.archived_at IS NULL" +
+      ") UPDATE tasks SET archived_at=$2, archive_batch_id=$3, updated_at=$2 " +
+      "WHERE id IN (SELECT id FROM descendants) RETURNING id",
+      [id, timestamp, batchId]
     );
     if (result.rows.length === 0) throw new Error("The task could not be archived.");
 
-    await tx.query(
-      "INSERT INTO task_events (id, task_id, event_type, metadata, created_at) " +
-        "VALUES ($1,$2,'task.archived','{}'::jsonb,$3)",
-      [crypto.randomUUID(), id, timestamp]
-    );
+    for (const row of result.rows) {
+      await insertEvent(tx, row.id, "task.archived", { batchId }, timestamp);
+    }
   });
 }
 
 export async function restoreTask(id: string): Promise<void> {
   const db = await getDatabase();
   const timestamp = new Date().toISOString();
+
   await db.transaction(async (tx) => {
-    const result = await tx.query<{ id: string }>(
-      "UPDATE tasks SET archived_at=NULL, updated_at=$2 WHERE id=$1 AND archived_at IS NOT NULL RETURNING id",
-      [id, timestamp]
+    const anchor = await tx.query<{ archive_batch_id: string | null }>(
+      "SELECT archive_batch_id FROM tasks WHERE id=$1 AND archived_at IS NOT NULL FOR UPDATE",
+      [id]
     );
-    if (result.rows.length === 0) throw new Error("This archived task could not be restored.");
-    await tx.query(
-      "INSERT INTO task_events (id, task_id, event_type, metadata, created_at) VALUES ($1,$2,'task.restored','{}'::jsonb,$3)",
-      [crypto.randomUUID(), id, timestamp]
-    );
+    if (!anchor.rows[0]) throw new Error("This archived task could not be restored.");
+    const batchId = anchor.rows[0].archive_batch_id;
+    const restored = batchId
+      ? await tx.query<{ id: string }>(
+          "UPDATE tasks SET archived_at=NULL, archive_batch_id=NULL, updated_at=$2 " +
+            "WHERE archive_batch_id=$1 AND archived_at IS NOT NULL RETURNING id",
+          [batchId, timestamp]
+        )
+      : await tx.query<{ id: string }>(
+          "UPDATE tasks SET archived_at=NULL, updated_at=$2 WHERE id=$1 AND archived_at IS NOT NULL RETURNING id",
+          [id, timestamp]
+        );
+
+    for (const row of restored.rows) {
+      await insertEvent(tx, row.id, "task.restored", { batchId }, timestamp);
+    }
   });
 }
 
 export async function reorderTask(id: string, orderIndex: number): Promise<void> {
-  if (!Number.isInteger(orderIndex) || orderIndex < 0) throw new Error("Task order must be a non-negative integer.");
+  if (!Number.isInteger(orderIndex) || orderIndex < 0) {
+    throw new Error("Task order must be a non-negative integer.");
+  }
   const db = await getDatabase();
   const timestamp = new Date().toISOString();
-  const result = await db.query(
-    "UPDATE tasks SET order_index=$2, updated_at=$3 WHERE id=$1 AND archived_at IS NULL",
-    [id, orderIndex, timestamp]
-  );
-  if (result.affectedRows === 0) throw new Error("The task could not be reordered.");
+  await db.transaction(async (tx) => {
+    const result = await tx.query<{ id: string }>(
+      "UPDATE tasks SET order_index=$2, updated_at=$3 WHERE id=$1 AND archived_at IS NULL RETURNING id",
+      [id, orderIndex, timestamp]
+    );
+    if (!result.rows[0]) throw new Error("The task could not be reordered.");
+    await insertEvent(tx, id, "task.reordered", { orderIndex }, timestamp);
+  });
 }
 
 export async function getTaskEvents(taskId: string): Promise<TaskEvent[]> {
