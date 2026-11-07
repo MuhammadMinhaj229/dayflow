@@ -10,11 +10,12 @@ import {
   MODULES, completionRate, createEmptyTaskDraft, formatDateLabel,
   localDateISO, moduleName, type ModuleKey, type Task, type TaskDraft
 } from "./domain/task";
-import { archiveTask, createTask, listArchivedTasks, listTasks, restoreTask, setTaskStatus, updateTask } from "./db/task-repository";
+import { archiveTask, createTask, getTaskEvents, listArchivedTasks, listTasks, restoreTask, setTaskStatus, updateTask, type TaskEvent } from "./db/task-repository";
 import { archiveProject, createProject, listArchivedProjects, listProjects, restoreProject, updateProject } from "./db/project-repository";
 import { ProjectEditor } from "./components/ProjectEditor";
 import { BackupPanel } from "./components/BackupPanel";
 import { StorageStatus } from "./components/StorageStatus";
+import { HistoryTimeline } from "./components/HistoryTimeline";
 import type { Project, ProjectDraft } from "./domain/task";
 import { initializeNativeWorkspace, isAndroidNative } from "./native/dayflow-native";
 
@@ -66,6 +67,27 @@ function TaskEditor({
   } : createEmptyTaskDraft(defaultDate));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [history, setHistory] = useState<TaskEvent[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(Boolean(task));
+  const [historyError, setHistoryError] = useState("");
+
+  useEffect(() => {
+    if (!task) {
+      setHistory([]);
+      setHistoryLoading(false);
+      return;
+    }
+    let active = true;
+    setHistoryLoading(true);
+    setHistoryError("");
+    void getTaskEvents(task.id)
+      .then((events) => { if (active) setHistory(events); })
+      .catch((cause: unknown) => {
+        if (active) setHistoryError(cause instanceof Error ? cause.message : "Task history could not be loaded.");
+      })
+      .finally(() => { if (active) setHistoryLoading(false); });
+    return () => { active = false; };
+  }, [task?.id]);
 
   function update<K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -175,6 +197,7 @@ function TaskEditor({
                 placeholder="Private notes stored on this device" />
             </label>
           </div>
+          {task && <HistoryTimeline subject="task" items={history} loading={historyLoading} error={historyError} />}
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="editor-actions">
             <button className="button button-quiet" type="button" onClick={onClose} disabled={saving}>Cancel</button>

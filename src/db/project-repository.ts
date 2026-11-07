@@ -271,7 +271,7 @@ export async function getProjectEvents(projectId: string): Promise<ProjectEvent[
     created_at: string;
   }>(
     "SELECT id,project_id,event_type,metadata,created_at::text AS created_at " +
-      "FROM project_events WHERE project_id=$1 ORDER BY created_at DESC",
+      "FROM project_events WHERE project_id=$1 ORDER BY created_at DESC LIMIT 50",
     [projectId]
   );
   return result.rows.map((row) => ({

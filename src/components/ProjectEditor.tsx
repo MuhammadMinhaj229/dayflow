@@ -1,5 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { MODULES, type Project, type ProjectDraft } from "../domain/task";
+import { getProjectEvents, type ProjectEvent } from "../db/project-repository";
+import { HistoryTimeline } from "./HistoryTimeline";
 
 const priorities = ["low", "medium", "high", "urgent"] as const;
 const statuses = [
@@ -34,6 +36,27 @@ export function ProjectEditor({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [history, setHistory] = useState<ProjectEvent[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(Boolean(project));
+  const [historyError, setHistoryError] = useState("");
+
+  useEffect(() => {
+    if (!project) {
+      setHistory([]);
+      setHistoryLoading(false);
+      return;
+    }
+    let active = true;
+    setHistoryLoading(true);
+    setHistoryError("");
+    void getProjectEvents(project.id)
+      .then((events) => { if (active) setHistory(events); })
+      .catch((cause: unknown) => {
+        if (active) setHistoryError(cause instanceof Error ? cause.message : "Project history could not be loaded.");
+      })
+      .finally(() => { if (active) setHistoryLoading(false); });
+    return () => { active = false; };
+  }, [project?.id]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -101,6 +124,7 @@ export function ProjectEditor({
                 onChange={(event) => setDraft((value) => ({ ...value, dueDate: event.target.value || null }))} />
             </label>
           </div>
+          {project && <HistoryTimeline subject="project" items={history} loading={historyLoading} error={historyError} />}
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="editor-actions">
             <button className="button button-quiet" type="button" disabled={saving} onClick={onClose}>Cancel</button>

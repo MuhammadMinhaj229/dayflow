@@ -395,7 +395,7 @@ export async function getTaskEvents(taskId: string): Promise<TaskEvent[]> {
   const db = await getDatabase();
   const result = await db.query<EventRow>(
     "SELECT id, task_id, event_type, metadata, created_at::text AS created_at " +
-      "FROM task_events WHERE task_id=$1 ORDER BY created_at DESC",
+      "FROM task_events WHERE task_id=$1 ORDER BY created_at DESC LIMIT 50",
     [taskId]
   );
   return result.rows.map((row) => ({
