@@ -310,7 +310,7 @@ export default function App() {
     await withPendingWrite(async () => {
       if (editingTask) await updateTask(editingTask.id, draft);
       else await createTask(draft);
-      await refreshTasks();
+      await refreshWorkspace();
     });
     setEditorOpen(false);
     setEditingTask(null);
@@ -319,15 +319,50 @@ export default function App() {
   async function toggleTask(task: Task) {
     await withPendingWrite(async () => {
       await setTaskStatus(task.id, task.status === "done" ? "next" : "done");
-      await refreshTasks();
+      await refreshWorkspace();
     });
   }
 
   async function archive(task: Task) {
     await withPendingWrite(async () => {
       await archiveTask(task.id);
-      await refreshTasks();
+      await refreshWorkspace();
     });
+  }
+
+  async function restore(task: Task) {
+    await withPendingWrite(async () => {
+      await restoreTask(task.id);
+      await refreshWorkspace();
+    });
+  }
+
+  async function saveProject(draft: ProjectDraft) {
+    await withPendingWrite(async () => {
+      if (editingProject) await updateProject(editingProject.id, draft);
+      else await createProject(draft);
+      await refreshWorkspace();
+    });
+    setProjectEditorOpen(false);
+    setEditingProject(null);
+  }
+
+  async function archive(project: Project) {
+    if (!window.confirm("Archive " + project.name + "? Its tasks will remain available in the task archive.")) return;
+    await withPendingWrite(async () => {
+      await archiveProject(project.id);
+      await refreshWorkspace();
+    });
+  }
+
+  function openNewProject() {
+    setEditingProject(null);
+    setProjectEditorOpen(true);
+  }
+
+  function openProjectEditor(project: Project) {
+    setEditingProject(project);
+    setProjectEditorOpen(true);
   }
 
   function openNewTask() {
@@ -406,7 +441,7 @@ export default function App() {
             <CircleHelp size={16} /><span>Local database unavailable: {databaseError}</span>
             <button onClick={() => {
               setLoading(true);
-              void refreshTasks().catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Database unavailable."))
+              void refreshWorkspace().catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Database unavailable."))
                 .finally(() => setLoading(false));
             }}>Retry</button>
           </div>
