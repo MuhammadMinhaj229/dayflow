@@ -8,7 +8,7 @@ import {
 import { registerDayFlowServiceWorker } from "./pwa/register";
 import {
   MODULES, completionRate, createEmptyTaskDraft, formatDateLabel,
-  localDateISO, moduleName, type ModuleKey, type Task, type TaskDraft
+  localDateISO, moduleName, type ModuleKey, type Task, type TaskDraft, type TaskStatus
 } from "./domain/task";
 import { archiveTask, createTask, getTaskEvents, listArchivedTasks, listTasks, restoreTask, setTaskStatus, updateTask, type TaskEvent } from "./db/task-repository";
 import { archiveProject, createProject, listArchivedProjects, listProjects, restoreProject, updateProject } from "./db/project-repository";
