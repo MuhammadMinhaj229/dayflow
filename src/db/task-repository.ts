@@ -222,28 +222,33 @@ export async function listArchivedTasks(): Promise<Task[]> {
   return result.rows.map(mapTask);
 }
 
-export async function createTask(input: TaskDraft): Promise<Task> {
+export async function createTask(input: TaskDraft, initialStatus: TaskStatus = "next"): Promise<Task> {
   const draft = normaliseDraft(input);
   const db = await getDatabase();
   const id = crypto.randomUUID();
   const timestamp = new Date().toISOString();
+  const completedAt = initialStatus === "done" ? timestamp : null;
+  const progress = initialStatus === "done" ? 100 : draft.progress;
 
   const created = await db.transaction(async (tx) => {
     await validateReferences(tx, draft);
     const result = await tx.query<TaskRow>(
       "INSERT INTO tasks (" +
         "id, title, details, module_key, project_id, parent_task_id, order_index, status, priority, " +
-        "due_date, scheduled_start, estimated_minutes, next_action, blocker, progress, notes, created_at, updated_at" +
-      ") VALUES ($1,$2,$3,$4,$5,$6,$7,'next',$8,$9,$10,$11,$12,$13,$14,$15,$16,$16) RETURNING " +
+        "due_date, scheduled_start, estimated_minutes, next_action, blocker, progress, notes, completed_at, created_at, updated_at" +
+      ") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$18) RETURNING " +
       TASK_COLUMNS,
       [
         id, draft.title, draft.details, draft.moduleKey, draft.projectId, draft.parentTaskId,
-        draft.orderIndex, draft.priority, draft.dueDate, draft.scheduledStart, draft.estimatedMinutes,
-        draft.nextAction, draft.blocker, draft.progress, draft.notes, timestamp
+        draft.orderIndex, initialStatus, draft.priority, draft.dueDate, draft.scheduledStart, draft.estimatedMinutes,
+        draft.nextAction, draft.blocker, progress, draft.notes, completedAt, timestamp
       ]
     );
 
     await insertEvent(tx, id, "task.created", { title: draft.title, moduleKey: draft.moduleKey }, timestamp);
+    if (initialStatus !== "next") {
+      await insertEvent(tx, id, "task.status_changed", { from: "next", to: initialStatus }, timestamp);
+    }
     const row = result.rows[0];
     if (!row) throw new Error("The task could not be created.");
     return mapTask(row);
@@ -252,7 +257,11 @@ export async function createTask(input: TaskDraft): Promise<Task> {
   return created;
 }
 
-export async function updateTask(id: string, input: TaskDraft): Promise<Task> {
+export async function updateTask(
+  id: string,
+  input: TaskDraft,
+  nextStatus?: TaskStatus
+): Promise<Task> {
   const draft = normaliseDraft(input);
   const db = await getDatabase();
   const timestamp = new Date().toISOString();
@@ -267,24 +276,34 @@ export async function updateTask(id: string, input: TaskDraft): Promise<Task> {
 
     await validateReferences(tx, draft, id);
     const previous = mapTask(existing);
+    const status = nextStatus ?? previous.status;
     const changes = changedFields(previous, draft);
+    const statusChanged = status !== previous.status;
+    if (statusChanged) {
+      changes.status = { from: previous.status, to: status };
+    }
     if (Object.keys(changes).length === 0) return previous;
 
+    const completedAt = status === "done" ? timestamp : null;
     const result = await tx.query<TaskRow>(
       "UPDATE tasks SET title=$2, details=$3, module_key=$4, project_id=$5, parent_task_id=$6, " +
         "order_index=$7, priority=$8, due_date=$9, scheduled_start=$10, estimated_minutes=$11, " +
-        "next_action=$12, blocker=$13, progress=$14, notes=$15, updated_at=$16 " +
-        "WHERE id=$1 AND archived_at IS NULL RETURNING " + TASK_COLUMNS,
+        "next_action=$12, blocker=$13, progress=CASE WHEN $16='done' THEN 100 " +
+        "WHEN progress=100 AND $16<>'done' THEN 0 ELSE $14 END, notes=$15, status=$16, " +
+        "completed_at=$17, updated_at=$18 WHERE id=$1 AND archived_at IS NULL RETURNING " + TASK_COLUMNS,
       [
         id, draft.title, draft.details, draft.moduleKey, draft.projectId, draft.parentTaskId,
         draft.orderIndex, draft.priority, draft.dueDate, draft.scheduledStart, draft.estimatedMinutes,
-        draft.nextAction, draft.blocker, draft.progress, draft.notes, timestamp
+        draft.nextAction, draft.blocker, draft.progress, draft.notes, status, completedAt, timestamp
       ]
     );
 
     const row = result.rows[0];
     if (!row) throw new Error("The task could not be updated.");
     await insertEvent(tx, id, "task.updated", { changes }, timestamp);
+    if (statusChanged) {
+      await insertEvent(tx, id, "task.status_changed", { from: previous.status, to: status }, timestamp);
+    }
     return mapTask(row);
   });
   publishWorkspaceChange();
