@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 test("creates a task, persists it through reload, and completes it offline", async ({ page, context }) => {
   const runtimeErrors: string[] = [];
+  const failedRequests: string[] = [];
+  page.on("requestfailed", (request) => failedRequests.push(request.url() + ": " + (request.failure()?.errorText ?? "request failed")));
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
   page.on("console", (message) => {
     if (message.type() === "error") runtimeErrors.push(message.text());
@@ -72,7 +74,35 @@ test("creates a task, persists it through reload, and completes it offline", asy
 
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
+  try {
+    await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible({ timeout: 12_000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(async () => {
+      const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+      const cacheNames = await caches.keys();
+      const cacheEntries = await Promise.all(cacheNames.map(async (name) => ({
+        name,
+        urls: (await (await caches.open(name)).keys()).map((request) => request.url)
+      })));
+      return {
+        online: navigator.onLine,
+        controller: navigator.serviceWorker?.controller?.scriptURL ?? null,
+        registrations: registrations.map((registration) => ({
+          scope: registration.scope,
+          active: registration.active?.state ?? null,
+          waiting: registration.waiting?.state ?? null
+        })),
+        cacheEntries
+      };
+    });
+    throw new Error(
+      "Offline navigation did not return the DayFlow shell. Body: " + (await page.locator("body").innerText()) +
+      "\\nWorker/cache diagnostics: " + JSON.stringify(diagnostics) +
+      "\\nFailed requests: " + failedRequests.join(" | ") +
+      "\\nRuntime errors: " + runtimeErrors.join(" | "),
+      { cause: error }
+    );
+  }
   try {
     await expect(page.getByText(title).first()).toBeVisible({ timeout: 15_000 });
   } catch (error) {
@@ -103,9 +133,18 @@ test("shows project activity history when editing an existing project", async ({
   await page.getByLabel("Project name").fill(projectName);
   await page.getByRole("button", { name: "Save project" }).click();
 
-  const projectCard = page.locator(".project-card").filter({ hasText: projectName });
-  await expect(projectCard).toBeVisible();
-  await projectCard.getByRole("button", { name: "Edit" }).click();
+  try {
+    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 12_000 });
+    const projectCard = page.locator(".project-card").filter({ hasText: projectName });
+    await expect(projectCard).toBeVisible({ timeout: 12_000 });
+    await projectCard.getByRole("button", { name: "Edit" }).click();
+  } catch (error) {
+    throw new Error(
+      "The project editor did not save and close successfully. Visible page: " +
+      (await page.locator("body").innerText()),
+      { cause: error }
+    );
+  }
 
   const projectDialog = page.getByRole("dialog");
   await expect(projectDialog.getByText("Recent activity")).toBeVisible();

@@ -31,7 +31,8 @@ const PRECACHE_PATHS = new Set(PRECACHE_URLS.map((entry) => new URL(entry, self.
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(PRECACHE_URLS);
+    const requests = PRECACHE_URLS.map((path) => new Request(new URL(path, self.location.origin).href));
+    await cache.addAll(requests);
     // First install activates immediately. Updates wait until the app explicitly approves them.
     if (!self.registration.active) await self.skipWaiting();
   })());
@@ -63,7 +64,8 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
-      const cached = await cache.match("/index.html") || await cache.match("/");
+      const cached = await cache.match(new URL("/index.html", self.location.origin).href) ||
+        await cache.match(new URL("/", self.location.origin).href);
       if (cached) return cached;
       try {
         return await fetch(request);
@@ -80,7 +82,7 @@ self.addEventListener("fetch", (event) => {
   if (PRECACHE_PATHS.has(url.pathname)) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
-      const cached = await cache.match(url.pathname);
+      const cached = await cache.match(url.href);
       if (cached) return cached;
       return fetch(request);
     })());
