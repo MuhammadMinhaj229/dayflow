@@ -208,6 +208,7 @@ export default function App() {
   const [online, setOnline] = useState(() => navigator.onLine);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
+  const [serviceWorkerError, setServiceWorkerError] = useState("");
   const [updateWorker, setUpdateWorker] = useState<((reloadPage?: boolean) => Promise<void>) | null>(null);
   const [pendingWrites, setPendingWrites] = useState(0);
   const canApplyUpdate = !editorOpen && pendingWrites === 0 && !loading;
@@ -278,7 +279,11 @@ export default function App() {
     const update = registerSW({
       immediate: true,
       onNeedRefresh() { setUpdateAvailable(true); },
-      onOfflineReady() { setOfflineReady(true); }
+      onOfflineReady() { setOfflineReady(true); },
+      onRegisteredSW() { setServiceWorkerError(""); },
+      onRegisterError(error: unknown) {
+        setServiceWorkerError(error instanceof Error ? error.message : "Service worker registration failed.");
+      }
     });
     setUpdateWorker(() => update);
   }, []);
@@ -472,6 +477,7 @@ export default function App() {
           </div>
         )}
         {offlineReady && !updateAvailable && <div className="notice" role="status"><WifiOff size={15} /> DayFlow is ready for offline use on this device.</div>}
+        {serviceWorkerError && <div className="notice notice-error" role="alert"><CircleHelp size={16} /> Offline support could not be activated: {serviceWorkerError}</div>}
         {nativeWorkspaceError && (
           <div className="notice notice-error" role="alert">
             <CircleHelp size={16} /><span>Android private workspace unavailable: {nativeWorkspaceError}</span>

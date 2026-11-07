@@ -27,16 +27,43 @@ test("creates a task, persists it through reload, and completes it offline", asy
     );
   }
 
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-    if (!navigator.serviceWorker.controller) {
-      await new Promise<void>((resolve) => {
-        const controllerChanged = () => resolve();
-        navigator.serviceWorker.addEventListener("controllerchange", controllerChanged, { once: true });
-        if (navigator.serviceWorker.controller) resolve();
-      });
-    }
+  const serviceWorkerState = await page.evaluate(async () => {
+    const supported = "serviceWorker" in navigator;
+    if (!supported) return { supported, secureContext: window.isSecureContext, registrations: [], controller: null };
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    return {
+      supported,
+      secureContext: window.isSecureContext,
+      registrations: registrations.map((registration) => ({
+        scope: registration.scope,
+        installing: registration.installing?.state ?? null,
+        waiting: registration.waiting?.state ?? null,
+        active: registration.active?.state ?? null,
+        activeScript: registration.active?.scriptURL ?? null
+      })),
+      controller: navigator.serviceWorker.controller?.scriptURL ?? null
+    };
   });
+
+  expect(
+    serviceWorkerState.supported,
+    "Service workers must be supported in the production preview: " + JSON.stringify(serviceWorkerState)
+  ).toBe(true);
+  expect(
+    serviceWorkerState.registrations.length,
+    "DayFlow did not register a service worker: " + JSON.stringify(serviceWorkerState) +
+    " Runtime errors: " + runtimeErrors.join(" | ")
+  ).toBeGreaterThan(0);
+
+  await expect.poll(async () => page.evaluate(async () => {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    return registrations.some((registration) => registration.active?.state === "activated");
+  }), { timeout: 20_000, intervals: [250, 500, 1000] }).toBe(true);
+
+  await expect.poll(async () => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), {
+    timeout: 20_000,
+    intervals: [250, 500, 1000]
+  }).toBe(true);
 
   await context.setOffline(true);
   await page.reload();
