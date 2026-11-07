@@ -50,7 +50,7 @@ jobs:
     name: Android native debug build
     needs: web-quality
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -75,6 +75,8 @@ jobs:
         run: yes | sdkmanager --licenses >/dev/null
       - name: Install Android API 36 platform
         run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Install Android emulator image
+        run: sdkmanager "emulator" "system-images;android-36;google_apis;x86_64"
       - name: Install npm dependencies
         run: npm ci --no-audit --no-fund
       - name: Generate and register Capacitor Android project
@@ -83,6 +85,66 @@ jobs:
         run: npx cap sync android
       - name: Build Android debug APK
         run: cd android && ./gradlew --no-daemon --stacktrace :app:assembleDebug
+      - name: Create Android emulator
+        run: |
+          echo "no" | avdmanager create avd --force -n dayflow-ci -k "system-images;android-36;google_apis;x86_64" -d pixel_2
+      - name: Boot Android emulator
+        run: |
+          emulator -avd dayflow-ci -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data -no-metrics > "$RUNNER_TEMP/dayflow-emulator.log" 2>&1 &
+          adb wait-for-device
+          booted=""
+          for attempt in $(seq 1 180); do
+            booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')"
+            if [ "$booted" = "1" ]; then break; fi
+            sleep 2
+          done
+          if [ "$booted" != "1" ]; then
+            cat "$RUNNER_TEMP/dayflow-emulator.log"
+            echo "Android emulator did not finish booting."
+            exit 1
+          fi
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+      - name: Install, launch and verify Android app workspace
+        run: |
+          adb logcat -c
+          adb install android/app/build/outputs/apk/debug/app-debug.apk
+          adb shell monkey -p com.dayflow.app 1
+          launched=""
+          for attempt in $(seq 1 60); do
+            if adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' | grep -q 'com.dayflow.app'; then
+              launched="yes"
+              break
+            fi
+            sleep 2
+          done
+          if [ "$launched" != "yes" ]; then
+            adb logcat -d -t 4000
+            echo "DayFlow did not reach the foreground on Android."
+            exit 1
+          fi
+          workspace=""
+          for attempt in $(seq 1 60); do
+            if adb shell run-as com.dayflow.app sh -c 'test -d files/DayFlow/backups && test -d files/DayFlow/exports && test -d files/DayFlow/imports && test -d files/DayFlow/attachments && test -d files/DayFlow/diagnostics && test -d files/DayFlow/update-manifests'; then
+              workspace="ready"
+              break
+            fi
+            sleep 2
+          done
+          if [ "$workspace" != "ready" ]; then
+            adb logcat -d -t 4000
+            echo "DayFlow did not create its six private workspace directories."
+            exit 1
+          fi
+          if adb logcat -d -t 6000 | grep -E 'FATAL EXCEPTION|Fatal signal'; then
+            echo "Android reported a fatal exception during DayFlow startup."
+            exit 1
+          fi
+      - name: Stop Android emulator
+        if: always()
+        run: |
+          adb emu kill || true
       - name: Generate APK checksum
         run: sha256sum android/app/build/outputs/apk/debug/app-debug.apk > android/app/build/outputs/apk/debug/app-debug.apk.sha256
       - name: Upload Android debug APK

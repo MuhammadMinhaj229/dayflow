@@ -22,7 +22,7 @@ DayFlow is a local-first personal workspace with one shared React + TypeScript c
 - Encrypted workspace export/import using AES-256-GCM with a PBKDF2-SHA-256 passphrase-derived key.
 - PWA manifest and project-owned service worker. The offline precache includes the PGlite JavaScript, WASM and .data assets, so the database can initialise after a cold offline reload.
 - Android Capacitor shell bootstrap, app-private DayFlow workspace, Android system file picker for backup import/export, and Android Keystore AES-GCM primitives for device secrets.
-- GitHub Actions gates for dependency audit, TypeScript, ESLint, unit/database tests, production build, Playwright offline persistence, and Android debug APK compilation.
+- GitHub Actions gates for dependency audit, TypeScript, ESLint, unit/database tests, production build, Playwright offline and multi-tab persistence under CSP, Android debug APK compilation, and Android emulator launch/private-workspace smoke tests.
 
 ## Known release gaps
 
@@ -31,7 +31,7 @@ These are not represented as completed features:
 - Gmail OAuth, incremental metadata sync, local MCP server and Android background sync.
 - Vector/semantic search and local embedding model lifecycle.
 - Dedicated milestone, time-block, contacts/opportunities/referrals, subscription and integration-management data screens beyond the current task/project workspace.
-- A signed Android release, Play Store distribution, native web-bundle updater/rollback, Android emulator/device acceptance tests and store signing/secret configuration.
+- A signed Android release, Play Store distribution, native web-bundle updater/rollback, physical-device acceptance tests and store signing/secret configuration.
 - Transparent database encryption at rest. The PGlite database in browser-origin IndexedDB is **not** a SQLCipher-equivalent encrypted database.
 - A biometric app lock and native home-screen widget.
 
