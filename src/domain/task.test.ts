@@ -35,6 +35,13 @@ describe("timezone-aware localDateISO", () => {
 
 describe("formatDateLabel", () => {
   it("formats a date without moving to the previous day", () => {
-    expect(formatDateLabel("2026-11-07")).toContain("7");
+    expect(formatDateLabel("2026-11-07", "Asia/Kolkata")).toContain("7");
+    expect(formatDateLabel("2026-11-07", "UTC")).toContain("7");
+  });
+
+  it("uses the supplied timezone when formatting dates near midnight", () => {
+    const date = "2026-11-08";
+    expect(formatDateLabel(date, "Asia/Kolkata")).toContain("8");
+    expect(formatDateLabel(date, "Pacific/Honolulu")).toContain("8");
   });
 });

@@ -56,4 +56,23 @@ describe("PGlite schema migrations", () => {
       await db.close();
     }
   });
+
+  it("refuses to open a database created by a newer app version", async () => {
+    const db = await PGlite.create("memory://");
+    try {
+      await db.exec(
+        "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW());"
+      );
+      await db.query("INSERT INTO schema_migrations (version) VALUES (999)");
+      await expect(applyMigrations(db)).rejects.toThrow(/newer app version/i);
+      const versions = await db.query<{ version: number }>("SELECT version FROM schema_migrations");
+      expect(versions.rows.map((row) => row.version)).toEqual([999]);
+      const tables = await db.query<{ table_name: string }>(
+        "SELECT table_name FROM information_schema.tables WHERE table_name='tasks'"
+      );
+      expect(tables.rows).toHaveLength(0);
+    } finally {
+      await db.close();
+    }
+  });
 });

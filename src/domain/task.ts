@@ -121,12 +121,16 @@ export function localDateISO(date = new Date(), timeZone = Intl.DateTimeFormat()
   return part("year") + "-" + part("month") + "-" + part("day");
 }
 
-export function formatDateLabel(date: string): string {
+export function formatDateLabel(
+  date: string,
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+): string {
   const parsed = new Date(date + "T12:00:00");
   return new Intl.DateTimeFormat("en-IN", {
     weekday: "long",
     month: "long",
-    day: "numeric"
+    day: "numeric",
+    timeZone
   }).format(parsed);
 }
 

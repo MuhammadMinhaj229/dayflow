@@ -82,6 +82,17 @@ export async function applyMigrations(db: PGlite): Promise<void> {
     ");"
   );
 
+  const installed = await db.query<{ version: number }>(
+    "SELECT COALESCE(MAX(version), 0)::int AS version FROM schema_migrations"
+  );
+  const installedVersion = installed.rows[0]?.version ?? 0;
+  const supportedVersion = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
+  if (installedVersion > supportedVersion) {
+    throw new Error(
+      "This DayFlow database was upgraded by a newer app version. Update DayFlow before continuing; your local data has not been changed."
+    );
+  }
+
   for (const migration of MIGRATIONS) {
     const existing = await db.query<{ version: number }>(
       "SELECT version FROM schema_migrations WHERE version = $1",

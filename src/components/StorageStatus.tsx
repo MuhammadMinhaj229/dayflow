@@ -40,6 +40,8 @@ export function StorageStatus() {
       return;
     }
 
+    setSnapshot((current) => ({ ...current, supported: true }));
+    setLoading(true);
     try {
       const [estimate, persisted] = await Promise.all([
         storage.estimate(),
@@ -52,7 +54,14 @@ export function StorageStatus() {
         supported: true
       });
     } catch {
-      setMessage("The browser did not provide a storage estimate.");
+      setSnapshot((current) => ({
+        ...current,
+        usage: null,
+        quota: null,
+        persisted: current.persisted,
+        supported: true
+      }));
+      setMessage("The browser storage API is available, but an estimate could not be read.");
     } finally {
       setLoading(false);
     }
