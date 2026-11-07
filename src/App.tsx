@@ -5,7 +5,7 @@ import {
   FolderKanban, Inbox, LayoutDashboard, Plus, RefreshCw, Search,
   Settings2, ShieldCheck, Sparkles, Target, Wifi, WifiOff, X, Building2
 } from "lucide-react";
-import { registerSW } from "virtual:pwa-register";
+import { registerDayFlowServiceWorker } from "./pwa/register";
 import {
   MODULES, completionRate, createEmptyTaskDraft, formatDateLabel,
   localDateISO, moduleName, type ModuleKey, type Task, type TaskDraft
@@ -232,7 +232,7 @@ export default function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
   const [serviceWorkerError, setServiceWorkerError] = useState("");
-  const [updateWorker, setUpdateWorker] = useState<((reloadPage?: boolean) => Promise<void>) | null>(null);
+  const [updateWorker, setUpdateWorker] = useState<(() => Promise<void>) | null>(null);
   const [pendingWrites, setPendingWrites] = useState(0);
   const canApplyUpdate = !editorOpen && pendingWrites === 0 && !loading;
 
@@ -314,16 +314,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const update = registerSW({
-      immediate: true,
-      onNeedRefresh() { setUpdateAvailable(true); },
-      onOfflineReady() { setOfflineReady(true); },
-      onRegisteredSW() { setServiceWorkerError(""); },
-      onRegisterError(error: unknown) {
-        setServiceWorkerError(error instanceof Error ? error.message : "Service worker registration failed.");
+    let disposed = false;
+    let registrationHandle: Awaited<ReturnType<typeof registerDayFlowServiceWorker>> | null = null;
+
+    void registerDayFlowServiceWorker({
+      onNeedRefresh() { if (!disposed) setUpdateAvailable(true); },
+      onOfflineReady() { if (!disposed) setOfflineReady(true); },
+      onRegistered() { if (!disposed) setServiceWorkerError(""); }
+    }).then((handle) => {
+      registrationHandle = handle;
+      if (disposed) {
+        handle.dispose();
+        return;
+      }
+      setUpdateWorker(() => handle.applyUpdate);
+    }).catch((cause: unknown) => {
+      if (!disposed) {
+        setServiceWorkerError(cause instanceof Error ? cause.message : "Service worker registration failed.");
       }
     });
-    setUpdateWorker(() => update);
+
+    return () => {
+      disposed = true;
+      registrationHandle?.dispose();
+    };
   }, []);
 
   useEffect(() => {

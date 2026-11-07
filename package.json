@@ -43,8 +43,11 @@
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.1",
     "vite": "8.3.6",
-    "vite-plugin-pwa": "2.0.0",
     "vitest": "5.1.0",
     "@capacitor/cli": "8.6.0"
+  },
+  "overrides": {
+    "minimatch": "11.0.1",
+    "glob": "14.0.2"
   }
-}
+}\n
