@@ -33,13 +33,11 @@ export async function registerDayFlowServiceWorker(
     }
   };
 
-  const onInstallingStateChange = () => {
-    const worker = registration.installing;
-    if (!worker) return;
-    if (worker.state === "installed") {
-      if (navigator.serviceWorker.controller) notifyWaitingWorker();
-      else callbacks.onOfflineReady();
-    }
+  const onInstallingStateChange = (event: Event) => {
+    const worker = event.target as ServiceWorker | null;
+    if (!worker || worker.state !== "installed" || disposed) return;
+    if (navigator.serviceWorker.controller) notifyWaitingWorker();
+    else callbacks.onOfflineReady();
   };
 
   const onUpdateFound = () => {
@@ -62,8 +60,13 @@ export async function registerDayFlowServiceWorker(
     }
   }, 60 * 60 * 1000);
 
-  await navigator.serviceWorker.ready;
-  if (!registration.waiting) callbacks.onOfflineReady();
+  await Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<never>((_resolve, reject) => {
+      window.setTimeout(() => reject(new Error("DayFlow's offline cache did not finish installing. Check available device storage and retry.")), 30_000);
+    })
+  ]);
+  if (!disposed && !registration.waiting) callbacks.onOfflineReady();
   notifyWaitingWorker();
 
   void registration.update().then(notifyWaitingWorker).catch(() => undefined);

@@ -20,7 +20,7 @@ DayFlow is a local-first personal workspace with one shared React + TypeScript c
 - Task editing for module, project, subtask parent, priority, due date, start time, estimate, progress, next action, blocker and notes.
 - Task status history, project history, hierarchy validation, reversible task/project archive batches and restore.
 - Encrypted workspace export/import using AES-256-GCM with a PBKDF2-SHA-256 passphrase-derived key.
-- PWA manifest and service worker. The offline precache includes the PGlite JavaScript, WASM and .data assets, so the database can initialise after a cold offline reload.
+- PWA manifest and project-owned service worker. The offline precache includes the PGlite JavaScript, WASM and .data assets, so the database can initialise after a cold offline reload.
 - Android Capacitor shell bootstrap, app-private DayFlow workspace, Android system file picker for backup import/export, and Android Keystore AES-GCM primitives for device secrets.
 - GitHub Actions gates for dependency audit, TypeScript, ESLint, unit/database tests, production build, Playwright offline persistence, and Android debug APK compilation.
 

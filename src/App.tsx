@@ -342,7 +342,7 @@ export default function App() {
 
   useEffect(() => {
     if (!updateAvailable || !updateWorker || !canApplyUpdate) return;
-    void updateWorker(true).catch((cause: unknown) => {
+    void updateWorker().catch((cause: unknown) => {
       setDatabaseError(cause instanceof Error ? cause.message : "The app update could not be applied.");
     });
   }, [canApplyUpdate, updateAvailable, updateWorker]);
