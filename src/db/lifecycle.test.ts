@@ -192,7 +192,7 @@ describe("project lifecycle", () => {
       [child.id, new Date().toISOString()]
     );
 
-    await expect(archiveProject(project.id)).rejects.toThrow(/existing task hierarchy/i);
+    await expect(archiveProject(project.id)).rejects.toThrow(/complete task hierarchy/i);
     expect(await listProjects({ includeCompleted: true })).toHaveLength(1);
     expect((await listTasks()).map((task) => task.id)).toEqual([parent.id]);
   });
