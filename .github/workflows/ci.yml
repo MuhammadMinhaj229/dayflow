@@ -83,3 +83,15 @@ jobs:
         run: npx cap sync android
       - name: Build Android debug APK
         run: cd android && ./gradlew --no-daemon --stacktrace :app:assembleDebug
+      - name: Generate APK checksum
+        run: sha256sum android/app/build/outputs/apk/debug/app-debug.apk > android/app/build/outputs/apk/debug/app-debug.apk.sha256
+      - name: Upload Android debug APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dayflow-android-debug-${{ github.sha }}
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

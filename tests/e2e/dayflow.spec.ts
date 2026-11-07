@@ -87,4 +87,27 @@ test("creates a task, persists it through reload, and completes it offline", asy
 
   await page.getByRole("button", { name: "Complete: " + title }).click();
   await expect(page.getByRole("button", { name: "Reopen: " + title })).toBeVisible();
+
+  await page.locator(".task-content").filter({ hasText: title }).click();
+  const taskDialog = page.getByRole("dialog");
+  await expect(taskDialog.getByText("Recent activity")).toBeVisible();
+  await expect(taskDialog.getByText("Status: next → done")).toBeVisible();
+});
+
+test("shows project activity history when editing an existing project", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
+
+  const projectName = "History test project " + Date.now();
+  await page.getByRole("button", { name: "New project" }).click();
+  await page.getByLabel("Project name").fill(projectName);
+  await page.getByRole("button", { name: "Save project" }).click();
+
+  const projectCard = page.locator(".project-card").filter({ hasText: projectName });
+  await expect(projectCard).toBeVisible();
+  await projectCard.getByRole("button", { name: "Edit" }).click();
+
+  const projectDialog = page.getByRole("dialog");
+  await expect(projectDialog.getByText("Recent activity")).toBeVisible();
+  await expect(projectDialog.getByText("created", { exact: true })).toBeVisible();
 });
