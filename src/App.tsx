@@ -360,6 +360,13 @@ export default function App() {
     });
   }
 
+  async function restoreProjectRecord(project: Project) {
+    await withPendingWrite(async () => {
+      await restoreProject(project.id);
+      await refreshWorkspace();
+    });
+  }
+
   function openNewProject() {
     setEditingProject(null);
     setProjectEditorOpen(true);
@@ -512,11 +519,11 @@ export default function App() {
 
         <section className="project-section">
           <div className="section-heading">
-            <div><span className="eyebrow">OUTCOME TRACKING</span><h2>Projects</h2></div>
-            <button className="button button-outline" onClick={openNewProject}><Plus size={15} /> New project</button>
+            <div><span className="eyebrow">{view === "archived" ? "RECOVERABLE RECORDS" : "OUTCOME TRACKING"}</span><h2>{view === "archived" ? "Archived projects" : "Projects"}</h2></div>
+            {view !== "archived" && <button className="button button-outline" onClick={openNewProject}><Plus size={15} /> New project</button>}
           </div>
           {visibleProjects.length === 0 ? (
-            <div className="project-empty">No projects in this area yet. Create one to group tasks around a meaningful outcome.</div>
+            <div className="project-empty">{view === "archived" ? "No archived projects." : "No projects in this area yet. Create one to group tasks around a meaningful outcome."}</div>
           ) : (
             <div className="project-grid">
               {visibleProjects.map((project) => (
@@ -537,8 +544,18 @@ export default function App() {
                     <span>{project.completedTaskCount}/{project.taskCount} tasks</span>
                   </div>
                   <div className="project-card-actions">
-                    <button type="button" onClick={() => openProjectEditor(project)}>Edit</button>
-                    <button type="button" onClick={() => void archiveProjectRecord(project).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Project archive failed."))}>Archive</button>
+                    {view === "archived" ? (
+                      <button type="button" disabled={pendingWrites > 0}
+                        onClick={() => void restoreProjectRecord(project).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Project restore failed."))}>
+                        Restore project and tasks
+                      </button>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => openProjectEditor(project)}>Edit</button>
+                        <button type="button" disabled={pendingWrites > 0}
+                          onClick={() => void archiveProjectRecord(project).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Project archive failed."))}>Archive</button>
+                      </>
+                    )}
                   </div>
                 </article>
               ))}
