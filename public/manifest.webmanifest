@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "DayFlow — Personal Operations",
+  "short_name": "DayFlow",
+  "description": "A private, local-first personal operations workspace.",
+  "theme_color": "#f4f5ee",
+  "background_color": "#f4f5ee",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

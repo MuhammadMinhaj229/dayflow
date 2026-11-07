@@ -1,0 +1,142 @@
+import { createHash } from "node:crypto";
+import { defineConfig, type Plugin } from "vitest/config";
+import react from "@vitejs/plugin-react";
+
+function dayFlowServiceWorker(): Plugin {
+  return {
+    name: "dayflow-service-worker",
+    apply: "build",
+    generateBundle(_output, bundle) {
+      // Every emitted output entry is part of the offline application. Avoid
+      // extension allow-lists: bundler/runtime asset suffixes can change.
+      const files = Object.keys(bundle)
+        .filter((file) => file !== "sw.js")
+        .sort();
+      const precacheUrls = [
+        "/",
+        "/index.html",
+        "/manifest.webmanifest",
+        "/icon.svg",
+        ...files.map((file) => "/" + file)
+      ];
+      const uniqueUrls = [...new Set(precacheUrls)];
+      const buildId = createHash("sha256")
+        .update(JSON.stringify(uniqueUrls))
+        .digest("hex")
+        .slice(0, 12);
+
+      const serviceWorker = `
+const CACHE_NAME = "dayflow-shell-${buildId}";
+const PRECACHE_URLS = ${JSON.stringify(uniqueUrls)};
+const PRECACHE_PATHS = new Set(PRECACHE_URLS.map((entry) => new URL(entry, self.location.origin).pathname));
+
+self.addEventListener("install", (event) => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    const requests = PRECACHE_URLS.map((path) => new Request(new URL(path, self.location.origin).href));
+    await cache.addAll(requests);
+    // First install activates immediately. Updates wait until the app explicitly approves them.
+    if (!self.registration.active) await self.skipWaiting();
+  })());
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys
+      .filter((key) => key.startsWith("dayflow-shell-") && key !== CACHE_NAME)
+      .map((key) => caches.delete(key)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "DAYFLOW_SKIP_WAITING") {
+    event.waitUntil(self.skipWaiting());
+  }
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  if (request.mode === "navigate") {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(new URL("/index.html", self.location.origin).href) ||
+        await cache.match(new URL("/", self.location.origin).href);
+      if (cached) return cached;
+      try {
+        return await fetch(request);
+      } catch {
+        return new Response("DayFlow is offline and this page is not cached yet.", {
+          status: 503,
+          headers: { "Content-Type": "text/plain; charset=utf-8" }
+        });
+      }
+    })());
+    return;
+  }
+
+  if (PRECACHE_PATHS.has(url.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(url.href);
+      if (cached) return cached;
+      return fetch(request);
+    })());
+  }
+});
+`;
+      this.emitFile({ type: "asset", fileName: "sw.js", source: serviceWorker });
+    }
+  };
+}
+
+export default defineConfig({
+  preview: {
+    headers: {
+      "Content-Security-Policy": [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+        "script-src 'self' 'wasm-unsafe-eval'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "worker-src 'self' blob:",
+        "manifest-src 'self'"
+      ].join("; "),
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "no-referrer",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+      "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+      "Cross-Origin-Resource-Policy": "same-origin"
+    }
+  },
+  optimizeDeps: {
+    exclude: ["@electric-sql/pglite"]
+  },
+  worker: {
+    format: "es"
+  },
+  plugins: [
+    react(),
+    dayFlowServiceWorker()
+  ],
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.ts"]
+  },
+  build: {
+    sourcemap: false,
+    target: "es2022"
+  }
+});

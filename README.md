@@ -1,64 +1,81 @@
-# DayFlow — Personal Productivity OS
+# DayFlow
 
-A Samsung One UI-inspired personal planner: one structured task model, a calm daily command center, MongoDB-backed persistence, and a path to a real Android home-screen widget.
+**DayFlow V3 — Personal Operations OS**
 
-> Initial MVP scaffold. MongoDB Atlas and production authentication require environment setup and verification before live use.
+DayFlow is a local-first personal workspace with one shared React + TypeScript codebase for the browser PWA and the Capacitor Android shell. The device owns task and project records; the web deployment serves static application assets only.
 
-## Product direction
-- Glance: today's progress and next actions.
-- Plan: ordered tasks, priorities, time blocks and project context.
-- Review: completed work, carry-over and next actions.
-- Sync: explicit, idempotent import of finalized plans from ChatGPT or another trusted client.
-- Mobile: responsive web app/PWA first; native Android Glance widget is Phase 2.
+## Product and data principles
 
-## Stack
-- Next.js 16 App Router, React 19, TypeScript
-- MongoDB Node.js driver 7 / MongoDB Atlas
-- Tailwind CSS, custom Samsung One UI-inspired design system
-- Vercel hosting
-- Playwright E2E tests and GitHub Actions CI
-- Kotlin + Jetpack Glance for the future native widget
+- No MongoDB, hosted task database, account-based task sync or direct ChatGPT integration.
+- Five existing modules: PHFI Research, Career Operations, AGM Studio / Business, Projects Lab, and Systems & Access.
+- PGlite provides the local PostgreSQL-compatible database. The current web and Android WebView build uses IndexedDB persistence.
+- Task and project data stay in the device/browser origin. They are not sent to the DayFlow Vercel deployment.
+- Do not enter PHFI participant or child study data, identifiable research records or responses into DayFlow.
+- Gmail metadata sync/MCP is a planned optional integration and is not part of the current release.
 
-## Local development
-Requirements: Node.js 20.9+ (Node 22 recommended), npm, and a MongoDB Atlas connection string.
+## Implemented in this branch
+
+- React 19 + TypeScript + Vite application, responsive Today dashboard and five-module navigation.
+- PGlite database in a dedicated worker, versioned migrations and local task/project repositories.
+- Task editing for module, project, subtask parent, priority, due date, start time, estimate, progress, next action, blocker and notes.
+- Task status history, project history, hierarchy validation, reversible task/project archive batches and restore.
+- Encrypted workspace export/import using AES-256-GCM with a PBKDF2-SHA-256 passphrase-derived key.
+- PWA manifest and project-owned service worker. The offline precache includes the PGlite JavaScript, WASM and .data assets, so the database can initialise after a cold offline reload.
+- Android Capacitor shell bootstrap, app-private DayFlow workspace, Android system file picker for backup import/export, and Android Keystore AES-GCM primitives for device secrets.
+- GitHub Actions gates for dependency audit, TypeScript, ESLint, unit/database tests, production build, Playwright offline and multi-tab persistence under CSP, Android debug APK compilation, and Android emulator launch/private-workspace smoke tests.
+
+## Known release gaps
+
+These are not represented as completed features:
+
+- Gmail OAuth, incremental metadata sync, local MCP server and Android background sync.
+- Vector/semantic search and local embedding model lifecycle.
+- Dedicated milestone, time-block, contacts/opportunities/referrals, subscription and integration-management data screens beyond the current task/project workspace.
+- A signed Android release, Play Store distribution, native web-bundle updater/rollback, physical-device acceptance tests and store signing/secret configuration.
+- Transparent database encryption at rest. The PGlite database in browser-origin IndexedDB is **not** a SQLCipher-equivalent encrypted database.
+- A biometric app lock and native home-screen widget.
+
+## Storage and recovery boundaries
+
+### Browser PWA
+
+The primary database is stored in browser-origin IndexedDB. It is private to the site origin, not a normal user-visible folder. The browser persistent-storage request may reduce automatic eviction where granted, but it does not prevent a user, browser, profile reset or device reset from clearing the data.
+
+The app reports browser storage usage/quota and persistence state. Keep regular encrypted backups outside this device. The encrypted backup is portable; the database itself is not transparently encrypted at rest.
+
+### Android shell
+
+On first native launch, DayFlow creates an app-private DayFlow directory for backups, exports, imports, attachments, diagnostics and update manifests. It uses Android's Storage Access Framework when the user explicitly chooses an external backup location. It does not request broad shared-storage permissions.
+
+The primary PGlite database still resides in the WebView's browser-origin storage. App-private backup files are not a second task database. Android app-private data is removed when the app is uninstalled; export a recovery backup before uninstalling or changing devices.
+
+## Development
+
+Requirements: Node.js 22.13+ and npm.
 
 ```bash
-cp .env.example .env.local
-npm install
+npm ci
 npm run dev
 ```
 
-For UI-only preview, `DAYFLOW_DEMO_MODE=true` stores tasks in browser localStorage. This mode is not synced or durable and must not be used as production persistence.
+Quality gates:
 
-## Production environment
-Set the following in Vercel Project Settings → Environment Variables:
-- `MONGODB_URI`
-- `MONGODB_DB` (recommended: `dayflow`)
-- `DAYFLOW_ADMIN_EMAIL`
-- `DAYFLOW_ADMIN_PASSWORD_HASH`
-- `DAYFLOW_AUTH_SECRET` (random secret, 32+ characters)
-- `DAYFLOW_SYNC_TOKEN` (for authenticated plan imports)
-- `DAYFLOW_DEMO_MODE=false`
-
-Generate secrets locally; never commit `.env.local` or expose credentials in client code. Run `npm run db:indexes` against the intended database before production.
-
-## API overview
-- `GET /api/health`
-- `GET /api/tasks?date=YYYY-MM-DD`
-- `POST /api/tasks`
-- `PATCH /api/tasks/:taskId`
-- `DELETE /api/tasks/:taskId`
-- `GET /api/plans`
-- `POST /api/integrations/plans/import`
-
-See `docs/architecture.md`, `docs/plan-sync.md`, `docs/research-and-decisions.md`, and `docs/release-checklist.md`.
-
-## Quality gates
 ```bash
 npm run typecheck
 npm run lint
+npm test
 npm run build
+npx playwright install chromium
 npm run test:e2e
+npm run android:bootstrap
+npx cap sync android
+cd android && ./gradlew :app:assembleDebug
 ```
 
-Run the checks and verify database-backed authentication before enabling production access.
+## Release workflow
+
+Development happens on the architecture/v3-local-first-gmail-mcp branch. The legacy main branch and its archive remain untouched as rollback sources.
+
+A Vercel preview is intentionally deferred until the required web and native changes are complete and CI is green. Do not switch the Vercel production framework/root-directory settings or change production environment variables as part of the preview build.
+
+See docs/architecture-v3-local-first.md for the target architecture.
