@@ -1,4 +1,5 @@
 import { getDatabase } from "./client";
+import { publishWorkspaceChange } from "./change-notifications";
 import type { Transaction } from "@electric-sql/pglite";
 import type { ModuleKey, Priority, Task, TaskDraft, TaskStatus } from "../domain/task";
 
@@ -227,7 +228,7 @@ export async function createTask(input: TaskDraft): Promise<Task> {
   const id = crypto.randomUUID();
   const timestamp = new Date().toISOString();
 
-  return db.transaction(async (tx) => {
+  const created = await db.transaction(async (tx) => {
     await validateReferences(tx, draft);
     const result = await tx.query<TaskRow>(
       "INSERT INTO tasks (" +
@@ -247,6 +248,8 @@ export async function createTask(input: TaskDraft): Promise<Task> {
     if (!row) throw new Error("The task could not be created.");
     return mapTask(row);
   });
+  publishWorkspaceChange();
+  return created;
 }
 
 export async function updateTask(id: string, input: TaskDraft): Promise<Task> {
@@ -254,7 +257,7 @@ export async function updateTask(id: string, input: TaskDraft): Promise<Task> {
   const db = await getDatabase();
   const timestamp = new Date().toISOString();
 
-  return db.transaction(async (tx) => {
+  const updated = await db.transaction(async (tx) => {
     const current = await tx.query<TaskRow>(
       "SELECT " + TASK_COLUMNS + " FROM tasks WHERE id=$1 AND archived_at IS NULL FOR UPDATE",
       [id]
@@ -284,6 +287,8 @@ export async function updateTask(id: string, input: TaskDraft): Promise<Task> {
     await insertEvent(tx, id, "task.updated", { changes }, timestamp);
     return mapTask(row);
   });
+  publishWorkspaceChange();
+  return updated;
 }
 
 export async function setTaskStatus(id: string, status: TaskStatus): Promise<void> {
@@ -308,6 +313,7 @@ export async function setTaskStatus(id: string, status: TaskStatus): Promise<voi
     if (!result.rows[0]) throw new Error("The task could not be updated.");
     await insertEvent(tx, id, "task.status_changed", { from: previous, to: status }, timestamp);
   });
+  publishWorkspaceChange();
 }
 
 export async function archiveTask(id: string): Promise<void> {
@@ -345,6 +351,7 @@ export async function archiveTask(id: string): Promise<void> {
       await insertEvent(tx, row.id, "task.archived", { batchId }, timestamp);
     }
   });
+  publishWorkspaceChange();
 }
 
 export async function restoreTask(id: string): Promise<void> {
@@ -382,6 +389,7 @@ export async function restoreTask(id: string): Promise<void> {
       await insertEvent(tx, row.id, "task.restored", { batchId }, timestamp);
     }
   });
+  publishWorkspaceChange();
 }
 
 export async function reorderTask(id: string, orderIndex: number): Promise<void> {
@@ -398,6 +406,7 @@ export async function reorderTask(id: string, orderIndex: number): Promise<void>
     if (!result.rows[0]) throw new Error("The task could not be reordered.");
     await insertEvent(tx, id, "task.reordered", { orderIndex }, timestamp);
   });
+  publishWorkspaceChange();
 }
 
 export async function getTaskEvents(taskId: string): Promise<TaskEvent[]> {

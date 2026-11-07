@@ -1,4 +1,5 @@
 import { getDatabase } from "./client";
+import { publishWorkspaceChange } from "./change-notifications";
 
 const BACKUP_FORMAT_VERSION = 2;
 const DATABASE_SCHEMA_VERSION = 3;
@@ -481,6 +482,7 @@ export async function restoreEncryptedBackup(file: File, passphrase: string): Pr
       );
     }
   });
+  publishWorkspaceChange();
 
   return { projectCount: payload.projects.length, taskCount: payload.tasks.length };
 }

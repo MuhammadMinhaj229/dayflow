@@ -1,4 +1,5 @@
 import { getDatabase } from "./client";
+import { publishWorkspaceChange } from "./change-notifications";
 import type { Transaction } from "@electric-sql/pglite";
 import type { ModuleKey, Priority, Project, ProjectDraft, ProjectStatus } from "../domain/task";
 
@@ -120,7 +121,7 @@ export async function createProject(input: ProjectDraft): Promise<Project> {
   const id = crypto.randomUUID();
   const timestamp = new Date().toISOString();
 
-  return db.transaction(async (tx) => {
+  const created = await db.transaction(async (tx) => {
     const result = await tx.query<ProjectRow>(
       "INSERT INTO projects (id,name,description,module_key,status,priority,due_date,created_at,updated_at) " +
         "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING " +
@@ -133,6 +134,8 @@ export async function createProject(input: ProjectDraft): Promise<Project> {
     await insertProjectEvent(tx,id,"project.created",{name:draft.name,moduleKey:draft.moduleKey},timestamp);
     return mapProject(row);
   });
+  publishWorkspaceChange();
+  return created;
 }
 
 export async function updateProject(id: string, input: ProjectDraft): Promise<void> {
@@ -175,6 +178,7 @@ export async function updateProject(id: string, input: ProjectDraft): Promise<vo
     };
     await insertProjectEvent(tx,id,"project.updated",{changes},timestamp);
   });
+  publishWorkspaceChange();
 }
 
 export async function archiveProject(id: string): Promise<void> {
@@ -224,6 +228,7 @@ export async function archiveProject(id: string): Promise<void> {
     }
     await insertProjectEvent(tx,id,"project.archived",{batchId,archivedTaskCount:archivedTasks.rows.length},timestamp);
   });
+  publishWorkspaceChange();
 }
 
 export async function restoreProject(id: string): Promise<void> {
@@ -259,6 +264,7 @@ export async function restoreProject(id: string): Promise<void> {
     );
     await insertProjectEvent(tx,id,"project.restored",{batchId},timestamp);
   });
+  publishWorkspaceChange();
 }
 
 export async function getProjectEvents(projectId: string): Promise<ProjectEvent[]> {
