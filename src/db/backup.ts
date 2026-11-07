@@ -9,6 +9,12 @@ const MAX_TASKS = 100_000;
 const MAX_EVENTS = 500_000;
 const AAD = new TextEncoder().encode("dayflow-backup:v1:schema:2");
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 type ModuleKey = "research" | "career" | "business" | "projects" | "systems";
 type TaskStatus = "next" | "in_progress" | "done" | "cancelled";
 type Priority = "low" | "medium" | "high" | "urgent";
@@ -202,13 +208,13 @@ function fromBase64(encoded: string): Uint8Array {
 async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(passphrase.normalize("NFC")),
+    toArrayBuffer(new TextEncoder().encode(passphrase.normalize("NFC"))),
     "PBKDF2",
     false,
     ["deriveKey"]
   );
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    { name: "PBKDF2", salt: toArrayBuffer(salt), iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
     material,
     { name: "AES-GCM", length: 256 },
     false,
@@ -225,9 +231,9 @@ export async function createEncryptedBackup(passphrase: string): Promise<Blob> {
   validatePassphrase(passphrase);
   const db = await getDatabase();
   const [projects, tasks, events] = await Promise.all([
-    db.query<PlainRecord>("SELECT * FROM projects ORDER BY id"),
-    db.query<PlainRecord>("SELECT * FROM tasks ORDER BY id"),
-    db.query<PlainRecord>("SELECT * FROM task_events ORDER BY id")
+    db.query<PlainRecord>("SELECT id,name,description,module_key,status,priority,due_date::text AS due_date,archived_at::text AS archived_at,created_at::text AS created_at,updated_at::text AS updated_at FROM projects ORDER BY id"),
+    db.query<PlainRecord>("SELECT id,title,details,module_key,project_id,parent_task_id,order_index,status,priority,due_date::text AS due_date,scheduled_start::text AS scheduled_start,estimated_minutes,next_action,blocker,progress,notes,completed_at::text AS completed_at,archived_at::text AS archived_at,created_at::text AS created_at,updated_at::text AS updated_at FROM tasks ORDER BY id"),
+    db.query<PlainRecord>("SELECT id,task_id,event_type,metadata,created_at::text AS created_at FROM task_events ORDER BY id")
   ]);
 
   const payload = validateBackupPayload({
@@ -244,7 +250,7 @@ export async function createEncryptedBackup(passphrase: string): Promise<Blob> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(passphrase, salt);
   const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv, additionalData: AAD, tagLength: 128 },
+    { name: "AES-GCM", iv: toArrayBuffer(iv), additionalData: toArrayBuffer(AAD), tagLength: 128 },
     key,
     plaintext
   );
@@ -305,12 +311,12 @@ export async function restoreEncryptedBackup(file: File, passphrase: string): Pr
     plaintext = await crypto.subtle.decrypt(
       {
         name: "AES-GCM",
-        iv: fromBase64(envelope.iv),
-        additionalData: AAD,
+        iv: toArrayBuffer(fromBase64(envelope.iv)),
+        additionalData: toArrayBuffer(AAD),
         tagLength: 128
       },
       key,
-      fromBase64(envelope.ciphertext)
+      toArrayBuffer(fromBase64(envelope.ciphertext))
     );
   } catch {
     throw new Error("The passphrase is incorrect or the backup has been modified.");

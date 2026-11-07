@@ -51,26 +51,38 @@ const validPayload = {
   }]
 };
 
+type MutablePayload = {
+  schemaVersion: number;
+  exportedAt: string;
+  projects: Array<Record<string, unknown>>;
+  tasks: Array<Record<string, unknown>>;
+  taskEvents: Array<Record<string, unknown>>;
+};
+
+function clonePayload(): MutablePayload {
+  return structuredClone(validPayload) as MutablePayload;
+}
+
 describe("encrypted backup validation", () => {
   it("accepts a complete relational backup", () => {
     expect(validateBackupPayload(validPayload).tasks).toHaveLength(1);
   });
 
   it("rejects tasks referencing a missing project", () => {
-    const corrupted = structuredClone(validPayload);
-    corrupted.tasks[0].project_id = "missing";
+    const corrupted = clonePayload();
+    const task = corrupted.tasks[0];
+    if (!task) throw new Error("Test fixture missing task.");
+    task.project_id = "missing";
     expect(() => validateBackupPayload(corrupted)).toThrow(/missing from this backup/i);
   });
 
   it("rejects circular subtask relationships", () => {
-    const corrupted = structuredClone(validPayload);
-    corrupted.tasks.push({
-      ...corrupted.tasks[0],
-      id: "task-b",
-      project_id: "project-a",
-      parent_task_id: "task-a"
-    });
-    corrupted.tasks[0].parent_task_id = "task-b";
+    const corrupted = clonePayload();
+    const first = corrupted.tasks[0];
+    if (!first) throw new Error("Test fixture missing task.");
+    const second = { ...first, id: "task-b", parent_task_id: "task-a" };
+    first.parent_task_id = "task-b";
+    corrupted.tasks.push(second);
     expect(() => validateBackupPayload(corrupted)).toThrow(/circular/i);
   });
 });
@@ -80,9 +92,8 @@ describe("backup encryption contract", () => {
     await expect(createEncryptedBackup("short")).rejects.toThrow(/12 characters/i);
   });
 
-  it("rejects a restore with the wrong passphrase without touching the database", async () => {
-    // The file envelope is validated and authenticated before any database transaction starts.
+  it("rejects a file that is not an encrypted DayFlow backup", async () => {
     const fake = new File(["{}"], "fake.dayflow", { type: "application/json" });
-    await expect(restoreEncryptedBackup(fake, "a sufficiently long passphrase")).rejects.toThrow();
+    await expect(restoreEncryptedBackup(fake, "a sufficiently long passphrase")).rejects.toThrow(/supported DayFlow/i);
   });
 });
