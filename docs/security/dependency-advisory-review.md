@@ -1,42 +1,38 @@
-# DayFlow dependency advisory review
+# DayFlow dependency security review
 
 **Reviewed:** 7 November 2026  
-**Scope:** V3 migration branch dependency graph from `package-lock.json`  
-**Policy:** Do not use `npm audit fix --force` as a substitute for compatibility review.
+**Branch:** `architecture/v3-local-first-gmail-mcp`  
+**Lockfile:** npm lockfile v3, 299 package entries at the reviewed commit  
+**Automated check:** `npm audit --audit-level=low`
 
-## Summary
+## Result
 
-The current lockfile contains no high- or critical-severity findings according to the CI gate:
+<badge>Zero known npm audit vulnerabilities</badge>
 
-```bash
-npm audit --audit-level=high
+The current locked dependency tree passed the full npm audit, including low and moderate severities, in GitHub Actions run [42351346939](https://github.com/MuhammadMinhaj229/dayflow/actions/runs/42351346939). The audit completed with:
+
+```text
+found 0 vulnerabilities
 ```
 
-The full audit also reports low/moderate advisories in the development/build toolchain. The current action is deliberately not to claim a clean dependency tree and not to force major-version overrides that may break the build. The residual findings are reviewed below.
+The previously recorded low/moderate findings were removed by updating the dependency graph and applying compatible, tested package overrides. The reviewed lockfile contains:
 
-## Findings
+| Package | Locked version | Finding |
+|---|---:|---|
+| `minimatch` | `11.0.1` | Patched release |
+| `glob` | `14.0.4` | Patched release |
+| `deepmerge` | Not present | No locked package |
 
-| Package and locked version | Dependency path | Advisory | Assessment |
-|---|---|---|---|
-| `deepmerge@4.3.1` | `vite-plugin-pwa → workbox-build → @rollup/plugin-node-resolve → deepmerge` | [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4) | Low severity. The advisory currently lists no patched release. This is a build-time dependency; DayFlow does not expose deepmerge operations to workspace data or user-supplied objects. |
-| `glob@11.1.0` | `vite-plugin-pwa → workbox-build → glob` | [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) | Moderate severity. Patched in glob 14.0.2. Workbox declares glob 11.x; forcing a major override without verifying Workbox API compatibility is not accepted. This is used during the build, not by the browser application. |
-| `minimatch@10.2.6` | ESLint 10 and typescript-eslint 8 via their declared semver ranges | [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) | Moderate severity. Patched in minimatch 11.0.1. ESLint's current dependency range still selects 10.x, and an upstream compatibility issue records breaking API differences between minimatch 10 and 11. No global override is applied until ESLint and typescript-eslint officially support the patched major. |
+## Controls
 
-The lockfile also contains `minimatch@5.1.9` under `filelist`, which is outside the advisory's affected range, and `minimatch@11.0.5` under `rimraf`, which is patched.
+- CI uses `npm ci` and audits the committed lockfile. It does not resolve unpinned dependency ranges during the validation job.
+- CI fails on any npm audit finding at low severity or above.
+- Dependabot checks npm dependencies and GitHub Actions weekly.
+- Dependency overrides are retained only while the full TypeScript, lint, unit, production build, Playwright and Android build checks remain green.
+- GitHub Actions uses immutable commit SHAs for third-party actions.
 
-## Exposure controls
+## Re-review policy
 
-- All three findings are in development/build tooling; none is imported by DayFlow's browser runtime or Android application code.
-- Workbox glob patterns are fixed in source configuration (including the explicit static asset extensions). User task/project values do not become filesystem glob patterns.
-- DayFlow does not expose ESLint or TypeScript parser operations as a user-facing or network-facing service.
-- CI runs dependency installation and security review separately from user data. No task database, email metadata or backup contents are uploaded to GitHub Actions.
-- The high/critical audit gate remains mandatory. A moderate/low finding is not hidden; this file records the exact packages and why a forced upgrade is not yet safe.
+Re-run the audit after every dependency or lockfile update and review upstream advisories before changing overrides. A zero-vulnerability audit is a point-in-time result, not a guarantee that future vulnerabilities will not be disclosed.
 
-## Remediation and re-review
-
-1. Re-check the upstream advisories and package ranges whenever `vite-plugin-pwa`, Workbox, ESLint or typescript-eslint is upgraded.
-2. Upgrade Workbox and/or its glob dependency when a compatible upstream release removes the vulnerable 11.x glob path.
-3. Move ESLint and typescript-eslint to releases that adopt a patched minimatch range. Until then, do not globally override minimatch 10 to 11 without running the full lint/typecheck/test/build pipeline.
-4. Re-run `npm audit`, `npm ls glob minimatch deepmerge`, all CI gates and a fresh production build after every dependency change.
-
-This is a time-bounded residual risk acceptance for build tooling, not a statement that the dependency graph has zero advisories. Re-review before a public production release.
+The build pipeline also runs without uploading application task data, research records, Gmail metadata or backup contents. The Android APK artifact contains only the debug application binary and its checksum.
