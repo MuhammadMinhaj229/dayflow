@@ -19,7 +19,8 @@
     "test:e2e": "playwright test",
     "android:bootstrap": "npm run build && node scripts/bootstrap-android.mjs",
     "android:sync": "npm run build && cap sync android",
-    "android:open": "cap open android"
+    "android:open": "cap open android",
+    "android:doctor": "cap doctor"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.15",
