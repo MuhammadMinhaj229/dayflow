@@ -1,4 +1,5 @@
 import { getDatabase } from "./client";
+import type { Transaction } from "@electric-sql/pglite";
 import type { ModuleKey, Priority, Task, TaskDraft, TaskStatus } from "../domain/task";
 
 interface TaskRow {
@@ -101,7 +102,7 @@ function normaliseDraft(draft: TaskDraft): TaskDraft {
 }
 
 async function validateReferences(
-  tx: Awaited<ReturnType<typeof getDatabase>> extends never ? never : any,
+  tx: Transaction,
   draft: TaskDraft,
   currentTaskId?: string
 ): Promise<void> {
