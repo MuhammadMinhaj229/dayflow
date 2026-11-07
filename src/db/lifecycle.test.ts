@@ -223,7 +223,7 @@ describe("project lifecycle", () => {
     const task = await createTask(taskDraft({ title: "Task from archived project", projectId: project.id }));
     await archiveProject(project.id);
 
-    await expect(restoreTask(task.id)).rejects.toThrow(/restore the project from the archive/i);
+    await expect(restoreTask(task.id)).rejects.toThrow(/restore the project first/i);
     expect(await listTasks()).toHaveLength(0);
     expect(await listArchivedProjects()).toHaveLength(1);
 

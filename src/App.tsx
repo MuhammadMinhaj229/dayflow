@@ -6,6 +6,7 @@ import {
   Settings2, ShieldCheck, Sparkles, Target, Wifi, WifiOff, X, Building2
 } from "lucide-react";
 import { registerDayFlowServiceWorker } from "./pwa/register";
+import { canApplyServiceWorkerUpdate } from "./pwa/update-safety";
 import { subscribeToWorkspaceChanges } from "./db/change-notifications";
 import {
   MODULES, completionRate, createEmptyTaskDraft, formatDateLabel,
@@ -72,9 +73,10 @@ function TaskEditor({
   const [history, setHistory] = useState<TaskEvent[]>([]);
   const [historyLoading, setHistoryLoading] = useState(Boolean(task));
   const [historyError, setHistoryError] = useState("");
+  const taskId = task?.id;
 
   useEffect(() => {
-    if (!task) {
+    if (!taskId) {
       setHistory([]);
       setHistoryLoading(false);
       return;
@@ -82,14 +84,14 @@ function TaskEditor({
     let active = true;
     setHistoryLoading(true);
     setHistoryError("");
-    void getTaskEvents(task.id)
+    void getTaskEvents(taskId)
       .then((events) => { if (active) setHistory(events); })
       .catch((cause: unknown) => {
         if (active) setHistoryError(cause instanceof Error ? cause.message : "Task history could not be loaded.");
       })
       .finally(() => { if (active) setHistoryLoading(false); });
     return () => { active = false; };
-  }, [task?.id]);
+  }, [taskId]);
 
   function update<K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -246,7 +248,7 @@ export default function App() {
   const [updateWorker, setUpdateWorker] = useState<(() => Promise<void>) | null>(null);
   const [pendingWrites, setPendingWrites] = useState(0);
   const [externalChangePending, setExternalChangePending] = useState(false);
-  const canApplyUpdate = !editorOpen && pendingWrites === 0 && !loading;
+  const canApplyUpdate = canApplyServiceWorkerUpdate({ taskEditorOpen: editorOpen, projectEditorOpen, pendingWrites, loading });
 
   async function refreshWorkspace() {
     setDatabaseError("");
@@ -560,7 +562,7 @@ export default function App() {
 
         {updateAvailable && (
           <div className="notice notice-update" role="status">
-            <RefreshCw size={16} /><span>{canApplyUpdate ? "A DayFlow update is ready and will apply automatically." : "An update is ready and will apply after the current edit or save is complete."}</span>
+            <RefreshCw size={16} /><span>{canApplyUpdate ? "A DayFlow update is ready and will apply automatically." : "An update is ready and will apply after the current edit, save or backup operation is complete."}</span>
           </div>
         )}
         {offlineReady && !updateAvailable && <div className="notice" role="status"><WifiOff size={15} /> DayFlow is ready for offline use on this device.</div>}
@@ -757,7 +759,7 @@ export default function App() {
 
         <section className="storage-section" id="storage-note">
           <StorageStatus />
-          <BackupPanel onRestored={refreshWorkspace} />
+          <BackupPanel onRestored={refreshWorkspace} withPendingWrite={withPendingWrite} />
           <p className="storage-boundary-note">Browser storage is private to this site and can be cleared by browser settings or device resets. Keep encrypted backups outside this device. The current PWA database is not transparently encrypted at rest.</p>
         </section>
 

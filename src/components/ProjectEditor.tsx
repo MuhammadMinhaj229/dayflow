@@ -39,9 +39,10 @@ export function ProjectEditor({
   const [history, setHistory] = useState<ProjectEvent[]>([]);
   const [historyLoading, setHistoryLoading] = useState(Boolean(project));
   const [historyError, setHistoryError] = useState("");
+  const projectId = project?.id;
 
   useEffect(() => {
-    if (!project) {
+    if (!projectId) {
       setHistory([]);
       setHistoryLoading(false);
       return;
@@ -49,14 +50,14 @@ export function ProjectEditor({
     let active = true;
     setHistoryLoading(true);
     setHistoryError("");
-    void getProjectEvents(project.id)
+    void getProjectEvents(projectId)
       .then((events) => { if (active) setHistory(events); })
       .catch((cause: unknown) => {
         if (active) setHistoryError(cause instanceof Error ? cause.message : "Project history could not be loaded.");
       })
       .finally(() => { if (active) setHistoryLoading(false); });
     return () => { active = false; };
-  }, [project?.id]);
+  }, [projectId]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

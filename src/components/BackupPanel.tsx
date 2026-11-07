@@ -10,7 +10,15 @@ import {
   type PrivateBackupInfo
 } from "../native/dayflow-native";
 
-export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> }) {
+type PendingWriteRunner = <T>(operation: () => Promise<T>) => Promise<T>;
+
+export function BackupPanel({
+  onRestored,
+  withPendingWrite
+}: {
+  onRestored: () => Promise<void>;
+  withPendingWrite: PendingWriteRunner;
+}) {
   const [exportPassphrase, setExportPassphrase] = useState("");
   const [confirmPassphrase, setConfirmPassphrase] = useState("");
   const [restorePassphrase, setRestorePassphrase] = useState("");
@@ -45,29 +53,31 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
     }
     setBusy("export");
     try {
-      const blob = await createEncryptedBackup(exportPassphrase);
-      const timestamp = new Date().toISOString().slice(0, 19).replaceAll("-", "").replaceAll(":", "");
-      const fileName = "dayflow-backup-" + timestamp + ".dayflow";
-      if (isAndroidNative()) {
-        await saveBackupToAndroidPrivateStorage(blob, fileName);
-        await refreshPrivateBackups();
-        const exported = await exportBackupWithAndroidPicker(blob, fileName);
-        setMessage(exported.exported
-          ? "Encrypted backup saved in DayFlow's private workspace and exported to your chosen location."
-          : "Encrypted backup saved in DayFlow's private workspace. External export was cancelled.");
-      } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-        setMessage("Encrypted backup created. Keep the file and passphrase in separate safe places.");
-      }
-      setExportPassphrase("");
-      setConfirmPassphrase("");
+      await withPendingWrite(async () => {
+        const blob = await createEncryptedBackup(exportPassphrase);
+        const timestamp = new Date().toISOString().slice(0, 19).replaceAll("-", "").replaceAll(":", "");
+        const fileName = "dayflow-backup-" + timestamp + ".dayflow";
+        if (isAndroidNative()) {
+          await saveBackupToAndroidPrivateStorage(blob, fileName);
+          await refreshPrivateBackups();
+          const exported = await exportBackupWithAndroidPicker(blob, fileName);
+          setMessage(exported.exported
+            ? "Encrypted backup saved in DayFlow's private workspace and exported to your chosen location."
+            : "Encrypted backup saved in DayFlow's private workspace. External export was cancelled.");
+        } else {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+          setMessage("Encrypted backup created. Keep the file and passphrase in separate safe places.");
+        }
+        setExportPassphrase("");
+        setConfirmPassphrase("");
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The backup could not be created.");
     } finally {
@@ -78,38 +88,42 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
   async function restoreBackup() {
     setError("");
     setMessage("");
-    let fileToRestore = selectedFile;
-    if (isAndroidNative() && selectedPrivateBackup) {
-      try {
-        fileToRestore = await readAndroidPrivateBackup(selectedPrivateBackup);
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "The private backup could not be read.");
-        return;
-      }
-    } else if (!fileToRestore && isAndroidNative()) {
-      try {
-        fileToRestore = await pickBackupWithAndroidPicker();
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "The backup could not be selected.");
-        return;
-      }
-    }
-    if (!fileToRestore) {
-      setError("Choose a DayFlow backup file first.");
-      return;
-    }
-    if (!window.confirm("Restore this backup? It will replace all current DayFlow projects, tasks and task history on this device. Export a backup of the current workspace first if you may need it.")) {
-      return;
-    }
     setBusy("restore");
     try {
-      const counts = await restoreEncryptedBackup(fileToRestore, restorePassphrase);
-      await onRestored();
-      setMessage("Restore completed: " + counts.projectCount + " projects and " + counts.taskCount + " tasks are now in this workspace.");
-      setSelectedFile(null);
-      setSelectedPrivateBackup("");
-      setRestorePassphrase("");
-      await refreshPrivateBackups();
+      await withPendingWrite(async () => {
+        let fileToRestore = selectedFile;
+        if (isAndroidNative() && selectedPrivateBackup) {
+          try {
+            fileToRestore = await readAndroidPrivateBackup(selectedPrivateBackup);
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "The private backup could not be read.");
+            return;
+          }
+        } else if (!fileToRestore && isAndroidNative()) {
+          try {
+            fileToRestore = await pickBackupWithAndroidPicker();
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "The backup could not be selected.");
+            return;
+          }
+        }
+
+        if (!fileToRestore) {
+          setError("Choose a DayFlow backup file first.");
+          return;
+        }
+        if (!window.confirm("Restore this backup? It will replace all current DayFlow projects, tasks and task history on this device. Export a backup of the current workspace first if you may need it.")) {
+          return;
+        }
+
+        const counts = await restoreEncryptedBackup(fileToRestore, restorePassphrase);
+        await onRestored();
+        setMessage("Restore completed: " + counts.projectCount + " projects and " + counts.taskCount + " tasks are now in this workspace.");
+        setSelectedFile(null);
+        setSelectedPrivateBackup("");
+        setRestorePassphrase("");
+        await refreshPrivateBackups();
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The backup could not be restored.");
     } finally {
