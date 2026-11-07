@@ -472,6 +472,14 @@ export default function App() {
           </div>
         )}
         {offlineReady && !updateAvailable && <div className="notice" role="status"><WifiOff size={15} /> DayFlow is ready for offline use on this device.</div>}
+        {nativeWorkspaceError && (
+          <div className="notice notice-error" role="alert">
+            <CircleHelp size={16} /><span>Android private workspace unavailable: {nativeWorkspaceError}</span>
+          </div>
+        )}
+        {isAndroidNative() && nativeWorkspaceReady && (
+          <div className="notice" role="status"><ShieldCheck size={15} /> Android private DayFlow workspace is ready.</div>
+        )}
         {databaseError && (
           <div className="notice notice-error" role="alert">
             <CircleHelp size={16} /><span>Local database unavailable: {databaseError}</span>
