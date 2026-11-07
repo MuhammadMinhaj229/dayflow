@@ -67,9 +67,9 @@ xml = xml.replace(application[0], applicationTag);
 
 const internetPermission = '<uses-permission android:name="android.permission.INTERNET" />';
 if (!xml.includes(internetPermission)) {
-  const manifestTag = xml.match(/<manifest\\b[^>]*>/);
+  const manifestTag = xml.match(/<manifest\b[^>]*>/);
   if (!manifestTag) throw new Error("The Android manifest root element was not found.");
-  xml = xml.replace(manifestTag[0], manifestTag[0] + "\\n    " + internetPermission);
+  xml = xml.replace(manifestTag[0], manifestTag[0] + "\n    " + internetPermission);
 }
 writeFileSync(manifest, xml, "utf8");
 
