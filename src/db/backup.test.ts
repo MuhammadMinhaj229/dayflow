@@ -8,7 +8,7 @@ import {
 } from "./backup";
 
 const validPayload = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   exportedAt: "2026-11-07T00:00:00.000Z",
   projects: [{
     id: "project-a",
@@ -19,6 +19,7 @@ const validPayload = {
     priority: "medium",
     due_date: null,
     archived_at: null,
+    archive_batch_id: null,
     created_at: "2026-11-07T00:00:00.000Z",
     updated_at: "2026-11-07T00:00:00.000Z"
   }],
@@ -41,6 +42,7 @@ const validPayload = {
     notes: null,
     completed_at: null,
     archived_at: null,
+    archive_batch_id: null,
     created_at: "2026-11-07T00:00:00.000Z",
     updated_at: "2026-11-07T00:00:00.000Z"
   }],
@@ -48,6 +50,13 @@ const validPayload = {
     id: "event-a",
     task_id: "task-a",
     event_type: "task.created",
+    metadata: {},
+    created_at: "2026-11-07T00:00:00.000Z"
+  }],
+  projectEvents: [{
+    id: "project-event-a",
+    project_id: "project-a",
+    event_type: "project.created",
     metadata: {},
     created_at: "2026-11-07T00:00:00.000Z"
   }]
@@ -59,6 +68,7 @@ type MutablePayload = {
   projects: Array<Record<string, unknown>>;
   tasks: Array<Record<string, unknown>>;
   taskEvents: Array<Record<string, unknown>>;
+  projectEvents: Array<Record<string, unknown>>;
 };
 
 function clonePayload(): MutablePayload {
@@ -66,8 +76,24 @@ function clonePayload(): MutablePayload {
 }
 
 describe("encrypted backup validation", () => {
-  it("accepts a complete relational backup", () => {
-    expect(validateBackupPayload(validPayload).tasks).toHaveLength(1);
+  it("accepts a complete relational backup including project history", () => {
+    const checked = validateBackupPayload(validPayload);
+    expect(checked.tasks).toHaveLength(1);
+    expect(checked.projectEvents).toHaveLength(1);
+  });
+
+  it("upgrades version 2 backup payloads without losing existing records", () => {
+    const legacy = clonePayload();
+    legacy.schemaVersion = 2;
+    delete legacy.projectEvents;
+    delete legacy.projects[0]?.archive_batch_id;
+    delete legacy.tasks[0]?.archive_batch_id;
+
+    const checked = validateBackupPayload(legacy);
+    expect(checked.schemaVersion).toBe(3);
+    expect(checked.projectEvents).toEqual([]);
+    expect(checked.projects[0]?.archive_batch_id).toBeNull();
+    expect(checked.tasks[0]?.archive_batch_id).toBeNull();
   });
 
   it("rejects tasks referencing a missing project", () => {
@@ -87,6 +113,22 @@ describe("encrypted backup validation", () => {
     corrupted.tasks.push(second);
     expect(() => validateBackupPayload(corrupted)).toThrow(/circular/i);
   });
+
+  it("rejects project history that points to a missing project", () => {
+    const corrupted = clonePayload();
+    const event = corrupted.projectEvents[0];
+    if (!event) throw new Error("Test fixture missing project event.");
+    event.project_id = "missing";
+    expect(() => validateBackupPayload(corrupted)).toThrow(/project history refers to a missing project/i);
+  });
+
+  it("rejects an archive batch attached to an active record", () => {
+    const corrupted = clonePayload();
+    const project = corrupted.projects[0];
+    if (!project) throw new Error("Test fixture missing project.");
+    project.archive_batch_id = "orphan-batch";
+    expect(() => validateBackupPayload(corrupted)).toThrow(/invalid project record/i);
+  });
 });
 
 describe("backup encryption contract", () => {
@@ -103,6 +145,7 @@ describe("backup encryption contract", () => {
     const restored = await decryptBackupFile(file, passphrase);
     expect(restored.projects).toHaveLength(1);
     expect(restored.tasks[0]?.title).toBe("Parent task");
+    expect(restored.projectEvents[0]?.eventType).toBe("project.created");
   });
 
   it("rejects a wrong passphrase before a restore transaction can start", async () => {
