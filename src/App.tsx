@@ -424,11 +424,9 @@ export default function App() {
   async function saveTask(draft: TaskDraft, status: TaskStatus) {
     await withPendingWrite(async () => {
       if (editingTask) {
-        await updateTask(editingTask.id, draft);
-        if (editingTask.status !== status) await setTaskStatus(editingTask.id, status);
+        await updateTask(editingTask.id, draft, status);
       } else {
-        const created = await createTask(draft);
-        if (status !== "next") await setTaskStatus(created.id, status);
+        await createTask(draft, status);
       }
       await refreshWorkspace();
     });

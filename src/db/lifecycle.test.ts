@@ -75,6 +75,33 @@ afterEach(async () => {
 });
 
 describe("task audit history", () => {
+  it("creates a task with its initial status in one transaction", async () => {
+    const task = await createTask(taskDraft({ title: "Create directly in progress" }), "in_progress");
+    expect(task.status).toBe("in_progress");
+
+    const events = await getTaskEvents(task.id);
+    expect(events.map((event) => event.eventType)).toEqual(["task.status_changed", "task.created"]);
+    expect(events[0]?.metadata).toEqual({ from: "next", to: "in_progress" });
+  });
+
+  it("updates task fields and status atomically and records both changes", async () => {
+    const task = await createTask(taskDraft({ title: "Atomic edit" }));
+    const edited = await updateTask(task.id, taskDraft({
+      title: "Atomic edit updated",
+      progress: 40
+    }), "done");
+
+    expect(edited.status).toBe("done");
+    expect(edited.progress).toBe(100);
+    const events = await getTaskEvents(task.id);
+    expect(events.map((event) => event.eventType)).toEqual([
+      "task.status_changed",
+      "task.updated",
+      "task.created"
+    ]);
+    expect(events[0]?.metadata).toEqual({ from: "next", to: "done" });
+  });
+
   it("records the actual previous and next status and skips no-op transitions", async () => {
     const task = await createTask(taskDraft({ title: "Audit status transitions" }));
     await setTaskStatus(task.id, "next");
