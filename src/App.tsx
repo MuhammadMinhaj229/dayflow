@@ -505,6 +505,42 @@ export default function App() {
           </div>
         </section>
 
+        <section className="project-section">
+          <div className="section-heading">
+            <div><span className="eyebrow">OUTCOME TRACKING</span><h2>Projects</h2></div>
+            <button className="button button-outline" onClick={openNewProject}><Plus size={15} /> New project</button>
+          </div>
+          {visibleProjects.length === 0 ? (
+            <div className="project-empty">No projects in this area yet. Create one to group tasks around a meaningful outcome.</div>
+          ) : (
+            <div className="project-grid">
+              {visibleProjects.map((project) => (
+                <article className="project-card" key={project.id}>
+                  <div className="project-card-top">
+                    <span className={"priority-tag priority-" + project.priority}>{project.priority}</span>
+                    <span className="project-status">{project.status.replace("_", " ")}</span>
+                  </div>
+                  <button className="project-card-title" onClick={() => {
+                    setSelectedModule(project.moduleKey);
+                    setView("today");
+                    setSearch("");
+                  }}>{project.name}</button>
+                  <p>{project.description || moduleName(project.moduleKey)}</p>
+                  <div className="project-progress"><span style={{ width: project.progress + "%" }} /></div>
+                  <div className="project-card-meta">
+                    <span>{project.progress}% complete</span>
+                    <span>{project.completedTaskCount}/{project.taskCount} tasks</span>
+                  </div>
+                  <div className="project-card-actions">
+                    <button type="button" onClick={() => openProjectEditor(project)}>Edit</button>
+                    <button type="button" onClick={() => void archive(project).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Project archive failed."))}>Archive</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
         <section className="task-panel">
           <div className="task-panel-header">
             <div>
@@ -566,7 +602,12 @@ export default function App() {
           </div>
         </section>
 
-        <footer className="workspace-footer" id="storage-note">
+        <section className="storage-section" id="storage-note">
+          <BackupPanel onRestored={refreshWorkspace} />
+          <p className="storage-boundary-note">Browser storage is private to this site and can be cleared by browser settings or device resets. Keep encrypted backups outside this device. The current PWA database is not transparently encrypted at rest.</p>
+        </section>
+
+        <footer className="workspace-footer" id="workspace-footer">
           <div className="footer-brand"><Command size={15} /> DayFlow</div>
           <p>Private by default. Tasks are stored locally on this device. No account or cloud task database is connected.</p>
           <span><Clock3 size={13} /> Browser storage</span>
@@ -575,15 +616,23 @@ export default function App() {
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
         <button className={selectedModule === "all" ? "mobile-nav-active" : ""} onClick={() => setSelectedModule("all")}><LayoutDashboard size={19} /><span>Today</span></button>
-        <button onClick={() => document.querySelector(".module-section")?.scrollIntoView({ behavior: "smooth" })}><FolderKanban size={19} /><span>Modules</span></button>
+        <button onClick={() => document.querySelector(".project-section")?.scrollIntoView({ behavior: "smooth" })}><FolderKanban size={19} /><span>Projects</span></button>
         <button onClick={openNewTask}><Plus size={19} /><span>Capture</span></button>
-        <button onClick={() => document.getElementById("storage-note")?.scrollIntoView({ behavior: "smooth" })}><Settings2 size={19} /><span>Settings</span></button>
+        <button onClick={() => document.querySelector(".storage-section")?.scrollIntoView({ behavior: "smooth" })}><Settings2 size={19} /><span>Settings</span></button>
       </nav>
 
       {editorOpen && (
         <TaskEditor key={editingTask?.id ?? "new-task"} task={editingTask} defaultDate={today}
+          projects={projects} tasks={tasks}
           onClose={() => { setEditorOpen(false); setEditingTask(null); }}
           onSave={saveTask} />
+      )}
+      {projectEditorOpen && (
+        <ProjectEditor
+          project={editingProject}
+          onClose={() => { setProjectEditorOpen(false); setEditingProject(null); }}
+          onSave={saveProject}
+        />
       )}
     </div>
   );
