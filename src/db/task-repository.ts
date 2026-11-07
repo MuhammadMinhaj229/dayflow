@@ -189,7 +189,8 @@ async function insertEvent(
 ): Promise<void> {
   await tx.query(
     "INSERT INTO task_events (id, task_id, event_type, metadata, created_at) " +
-      "VALUES ($1,$2,$3,$4::jsonb,$5)",
+      "VALUES ($1,$2,$3,$4::jsonb,GREATEST($5::timestamptz," +
+        "COALESCE((SELECT MAX(created_at) FROM task_events) + INTERVAL '1 microsecond',$5::timestamptz)))",
     [crypto.randomUUID(), taskId, eventType, JSON.stringify(metadata), timestamp]
   );
 }

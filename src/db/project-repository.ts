@@ -77,7 +77,9 @@ async function insertProjectEvent(
   timestamp: string
 ): Promise<void> {
   await tx.query(
-    "INSERT INTO project_events (id,project_id,event_type,metadata,created_at) VALUES ($1,$2,$3,$4::jsonb,$5)",
+    "INSERT INTO project_events (id,project_id,event_type,metadata,created_at) " +
+      "VALUES ($1,$2,$3,$4::jsonb,GREATEST($5::timestamptz," +
+        "COALESCE((SELECT MAX(created_at) FROM project_events) + INTERVAL '1 microsecond',$5::timestamptz)))",
     [crypto.randomUUID(), projectId, eventType, JSON.stringify(metadata), timestamp]
   );
 }
