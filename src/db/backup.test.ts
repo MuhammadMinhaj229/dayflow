@@ -145,7 +145,7 @@ describe("backup encryption contract", () => {
     const restored = await decryptBackupFile(file, passphrase);
     expect(restored.projects).toHaveLength(1);
     expect(restored.tasks[0]?.title).toBe("Parent task");
-    expect(restored.projectEvents[0]?.eventType).toBe("project.created");
+    expect(restored.projectEvents[0]?.event_type).toBe("project.created");
   });
 
   it("rejects a wrong passphrase before a restore transaction can start", async () => {
