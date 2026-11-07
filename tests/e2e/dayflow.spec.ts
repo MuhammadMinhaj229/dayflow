@@ -60,6 +60,11 @@ test("creates a task, persists it through reload, and completes it offline", asy
     return registrations.some((registration) => registration.active?.state === "activated");
   }), { timeout: 20_000, intervals: [250, 500, 1000] }).toBe(true);
 
+  // The first document may have loaded before the service worker activated.
+  // Navigate once while online so the active worker takes control of this page.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
+
   await expect.poll(async () => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), {
     timeout: 20_000,
     intervals: [250, 500, 1000]
