@@ -6,6 +6,7 @@ import {
   Settings2, ShieldCheck, Sparkles, Target, Wifi, WifiOff, X, Building2
 } from "lucide-react";
 import { registerDayFlowServiceWorker } from "./pwa/register";
+import { subscribeToWorkspaceChanges } from "./db/change-notifications";
 import {
   MODULES, completionRate, createEmptyTaskDraft, formatDateLabel,
   localDateISO, moduleName, type ModuleKey, type Task, type TaskDraft, type TaskStatus
@@ -244,6 +245,7 @@ export default function App() {
   const [serviceWorkerError, setServiceWorkerError] = useState("");
   const [updateWorker, setUpdateWorker] = useState<(() => Promise<void>) | null>(null);
   const [pendingWrites, setPendingWrites] = useState(0);
+  const [externalChangePending, setExternalChangePending] = useState(false);
   const canApplyUpdate = !editorOpen && pendingWrites === 0 && !loading;
 
   async function refreshWorkspace() {
@@ -278,6 +280,26 @@ export default function App() {
       });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    return subscribeToWorkspaceChanges(() => {
+      if (editorOpen || projectEditorOpen || pendingWrites > 0) {
+        setExternalChangePending(true);
+        return;
+      }
+      void refreshWorkspace().catch((cause: unknown) => {
+        setDatabaseError(cause instanceof Error ? cause.message : "Changes from another tab could not be loaded.");
+      });
+    });
+  }, [editorOpen, pendingWrites, projectEditorOpen]);
+
+  useEffect(() => {
+    if (!externalChangePending || editorOpen || projectEditorOpen || pendingWrites > 0) return;
+    setExternalChangePending(false);
+    void refreshWorkspace().catch((cause: unknown) => {
+      setDatabaseError(cause instanceof Error ? cause.message : "Changes from another tab could not be loaded.");
+    });
+  }, [editorOpen, externalChangePending, pendingWrites, projectEditorOpen]);
 
   useEffect(() => {
     if (!isAndroidNative()) return;
@@ -553,6 +575,7 @@ export default function App() {
         {isAndroidNative() && nativeWorkspaceReady && (
           <div className="notice" role="status"><ShieldCheck size={15} /> Android private DayFlow workspace is ready.</div>
         )}
+        {externalChangePending && <div className="notice" role="status">Another DayFlow tab changed your workspace. The view will refresh when the current edit is closed.</div>}
         {databaseError && (
           <div className="notice notice-error" role="alert">
             <CircleHelp size={16} /><span>Local database unavailable: {databaseError}</span>

@@ -197,6 +197,23 @@ test("separates overdue work from Inbox and supports explicit task status editin
   await expect(page.getByText(inboxTitle)).toHaveCount(0);
 });
 
+test("refreshes a second tab after a local task is created in the first tab", async ({ page, context }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
+
+  const secondPage = await context.newPage();
+  await secondPage.goto("/");
+  await expect(secondPage.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
+
+  const title = "Cross-tab task " + Date.now();
+  await page.getByRole("button", { name: "New task" }).click();
+  await page.getByLabel("Title").fill(title);
+  await page.getByRole("button", { name: "Save task" }).click();
+
+  await expect(page.getByText(title).first()).toBeVisible();
+  await expect(secondPage.getByText(title).first()).toBeVisible({ timeout: 10_000 });
+});
+
 test("shows project activity history when editing an existing project", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
