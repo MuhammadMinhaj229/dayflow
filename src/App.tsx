@@ -188,6 +188,11 @@ function TaskEditor({
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [archivedTasks, setArchivedTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [view, setView] = useState<"today" | "inbox" | "upcoming" | "archived">("today");
+  const [projectEditorOpen, setProjectEditorOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [selectedModule, setSelectedModule] = useState<ModuleKey | "all">("all");
   const [today] = useState(() => localDateISO());
   const [loading, setLoading] = useState(true);
@@ -202,20 +207,33 @@ export default function App() {
   const [pendingWrites, setPendingWrites] = useState(0);
   const canApplyUpdate = !editorOpen && pendingWrites === 0 && !loading;
 
-  async function refreshTasks() {
+  async function refreshWorkspace() {
     setDatabaseError("");
-    setTasks(await listTasks());
+    const [taskRows, projectRows, archivedRows] = await Promise.all([
+      listTasks(),
+      listProjects({ includeCompleted: true }),
+      listArchivedTasks()
+    ]);
+    setTasks(taskRows);
+    setProjects(projectRows);
+    setArchivedTasks(archivedRows);
   }
 
   useEffect(() => {
     let active = true;
-    void listTasks().then((records) => {
-      if (active) setTasks(records);
-    }).catch((cause: unknown) => {
-      if (active) setDatabaseError(cause instanceof Error ? cause.message : "Local storage could not be opened.");
-    }).finally(() => {
-      if (active) setLoading(false);
-    });
+    void Promise.all([listTasks(), listProjects({ includeCompleted: true }), listArchivedTasks()])
+      .then(([taskRows, projectRows, archivedRows]) => {
+        if (!active) return;
+        setTasks(taskRows);
+        setProjects(projectRows);
+        setArchivedTasks(archivedRows);
+      })
+      .catch((cause: unknown) => {
+        if (active) setDatabaseError(cause instanceof Error ? cause.message : "Local storage could not be opened.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
     return () => { active = false; };
   }, []);
 
@@ -251,18 +269,28 @@ export default function App() {
     [tasks]
   );
   const todaysTasks = useMemo(
-    () => tasks.filter((task) => task.dueDate === today || task.dueDate === null),
+    () => tasks.filter((task) => (task.dueDate === today || task.dueDate === null) && task.parentTaskId === null),
     [tasks, today]
   );
+  const viewTasks = useMemo(() => {
+    if (view === "archived") return archivedTasks;
+    if (view === "inbox") return tasks.filter((task) => task.dueDate === null && task.projectId === null && task.parentTaskId === null);
+    if (view === "upcoming") return tasks.filter((task) => task.dueDate !== null && task.dueDate > today);
+    return tasks.filter((task) => task.dueDate === today || task.dueDate === null);
+  }, [archivedTasks, tasks, today, view]);
   const visibleTasks = useMemo(() => {
-    const selected = selectedModule === "all" ? todaysTasks : todaysTasks.filter((task) => task.moduleKey === selectedModule);
+    const selected = selectedModule === "all" ? viewTasks : viewTasks.filter((task) => task.moduleKey === selectedModule);
     const term = search.trim().toLocaleLowerCase();
     return selected.filter((task) => !term ||
       task.title.toLocaleLowerCase().includes(term) ||
       (task.details ?? "").toLocaleLowerCase().includes(term) ||
       (task.nextAction ?? "").toLocaleLowerCase().includes(term)
     );
-  }, [search, selectedModule, todaysTasks]);
+  }, [search, selectedModule, viewTasks]);
+  const visibleProjects = useMemo(
+    () => selectedModule === "all" ? projects : projects.filter((project) => project.moduleKey === selectedModule),
+    [projects, selectedModule]
+  );
 
   const todayRate = completionRate(todaysTasks);
   const urgentCount = activeTasks.filter((task) => task.priority === "urgent" || task.priority === "high").length;
