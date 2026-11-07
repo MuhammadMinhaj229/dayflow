@@ -124,6 +124,29 @@ describe("task hierarchy and archive batches", () => {
       parentTaskId: child.id
     }))).rejects.toThrow(/circular/i);
   });
+
+  it("prevents moving a parent task while its child remains in the old module", async () => {
+    const parent = await createTask(taskDraft({ title: "Parent" }));
+    await createTask(taskDraft({ title: "Child", parentTaskId: parent.id }));
+    await expect(updateTask(parent.id, taskDraft({
+      title: "Parent",
+      moduleKey: "projects"
+    }))).rejects.toThrow(/move or detach this task's subtasks/i);
+  });
+
+  it("rejects archiving a parent when an older separately archived child would split the tree", async () => {
+    const parent = await createTask(taskDraft({ title: "Parent" }));
+    const child = await createTask(taskDraft({ title: "Child", parentTaskId: parent.id }));
+    const grandchild = await createTask(taskDraft({ title: "Grandchild", parentTaskId: child.id }));
+    await db.query(
+      "UPDATE tasks SET archived_at=$2,archive_batch_id='older-child-batch' WHERE id=$1",
+      [child.id, new Date().toISOString()]
+    );
+
+    await expect(archiveTask(parent.id)).rejects.toThrow(/restore archived subtasks/i);
+    const active = await listTasks();
+    expect(new Set(active.map((task) => task.id))).toEqual(new Set([parent.id, grandchild.id]));
+  });
 });
 
 describe("project lifecycle", () => {
@@ -152,10 +175,25 @@ describe("project lifecycle", () => {
     expect(history.map((event) => event.eventType)).toEqual(["project.restored", "project.archived", "project.created"]);
   });
 
-  it("prevents changing a project module while tasks are still linked", async () => {
+  it("prevents changing a project module while active or archived tasks remain linked", async () => {
     const project = await createProject(projectDraft);
-    await createTask(taskDraft({ projectId: project.id }));
+    const task = await createTask(taskDraft({ projectId: project.id }));
+    await archiveTask(task.id);
     await expect(updateProject(project.id, { ...projectDraft, moduleKey: "projects" }))
-      .rejects.toThrow(/move the project's tasks/i);
+      .rejects.toThrow(/unassign the project's tasks/i);
+  });
+
+  it("rejects archiving a project when a partially archived subtask tree remains", async () => {
+    const project = await createProject(projectDraft);
+    const parent = await createTask(taskDraft({ title: "Project parent", projectId: project.id }));
+    const child = await createTask(taskDraft({ title: "Project child", projectId: project.id, parentTaskId: parent.id }));
+    await db.query(
+      "UPDATE tasks SET archived_at=$2,archive_batch_id='older-project-child-batch' WHERE id=$1",
+      [child.id, new Date().toISOString()]
+    );
+
+    await expect(archiveProject(project.id)).rejects.toThrow(/existing task hierarchy/i);
+    expect(await listProjects({ includeCompleted: true })).toHaveLength(1);
+    expect((await listTasks()).map((task) => task.id)).toEqual([parent.id]);
   });
 });
