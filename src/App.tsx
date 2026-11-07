@@ -468,6 +468,7 @@ export default function App() {
   }
 
   async function archiveProjectRecord(project: Project) {
+    if (workspaceUnavailable || pendingWrites > 0) return;
     if (!window.confirm("Archive " + project.name + "? Its tasks will remain available in the task archive.")) return;
     await withPendingWrite(async () => {
       await archiveProject(project.id);
@@ -476,6 +477,7 @@ export default function App() {
   }
 
   async function restoreProjectRecord(project: Project) {
+    if (workspaceUnavailable || pendingWrites > 0) return;
     await withPendingWrite(async () => {
       await restoreProject(project.id);
       await refreshWorkspace();
@@ -674,14 +676,14 @@ export default function App() {
                   </div>
                   <div className="project-card-actions">
                     {view === "archived" ? (
-                      <button type="button" disabled={pendingWrites > 0}
+                      <button type="button" disabled={workspaceUnavailable || pendingWrites > 0}
                         onClick={() => void restoreProjectRecord(project).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Project restore failed."))}>
                         Restore project and tasks
                       </button>
                     ) : (
                       <>
                         <button type="button" onClick={() => openProjectEditor(project)}>Edit</button>
-                        <button type="button" disabled={pendingWrites > 0}
+                        <button type="button" disabled={workspaceUnavailable || pendingWrites > 0}
                           onClick={() => void archiveProjectRecord(project).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Project archive failed."))}>Archive</button>
                       </>
                     )}
@@ -704,7 +706,8 @@ export default function App() {
                 <input id="task-search" value={search} onChange={(event) => setSearch(event.target.value)}
                   placeholder="Find a task" aria-label="Find a task" />
               </label>
-              <button className="button button-outline" onClick={openNewTask}><Plus size={15} /> Add</button>
+              <button className="button button-outline" onClick={openNewTask}
+                disabled={workspaceUnavailable || pendingWrites > 0}><Plus size={15} /> Add</button>
             </div>
           </div>
 
