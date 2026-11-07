@@ -1,21 +1,21 @@
-import { PGlite } from "@electric-sql/pglite";
-import { applyMigrations } from "./migrations";
+import { PGliteWorker } from "@electric-sql/pglite/worker";
 
-let databasePromise: Promise<PGlite> | undefined;
+let databasePromise: Promise<PGliteWorker> | undefined;
 
-export function getDatabase(): Promise<PGlite> {
+export function getDatabase(): Promise<PGliteWorker> {
   if (!databasePromise) {
-    databasePromise = PGlite.create("idb://dayflow-v3", {
-      relaxedDurability: false
-    })
-      .then(async (database) => {
-        await applyMigrations(database);
-        return database;
-      })
-      .catch((error: unknown) => {
-        databasePromise = undefined;
-        throw error;
-      });
+    const databaseWorker = new Worker(
+      new URL("./pglite-worker.ts", import.meta.url),
+      { type: "module", name: "dayflow-database" }
+    );
+
+    databasePromise = PGliteWorker.create(databaseWorker, {
+      id: "dayflow-v3"
+    }).catch((error: unknown) => {
+      databaseWorker.terminate();
+      databasePromise = undefined;
+      throw error;
+    });
   }
   return databasePromise;
 }
