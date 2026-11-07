@@ -73,7 +73,16 @@ test("creates a task, persists it through reload, and completes it offline", asy
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
-  await expect(page.getByText(title).first()).toBeVisible();
+  try {
+    await expect(page.getByText(title).first()).toBeVisible({ timeout: 15_000 });
+  } catch (error) {
+    const body = await page.locator("body").innerText();
+    throw new Error(
+      "The app shell loaded offline but the locally stored task did not return. Runtime errors: " +
+      runtimeErrors.join(" | ") + "\\nVisible page content:\\n" + body,
+      { cause: error }
+    );
+  }
   await expect(page.locator(".connection-pill.offline")).toBeVisible();
 
   await page.getByRole("button", { name: "Complete: " + title }).click();

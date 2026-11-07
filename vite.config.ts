@@ -30,7 +30,7 @@ export default defineConfig({
       workbox: {
         // Claim the first installed worker for the open tab without forcing pending updates to activate.
         clientsClaim: true,
-        globPatterns: ["**/*.{js,css,html,svg,woff2,wasm}"],
+        globPatterns: ["**/*.{js,css,html,svg,woff2,wasm,data}"],
         maximumFileSizeToCacheInBytes: 25 * 1024 * 1024,
         navigateFallback: "/index.html",
         cleanupOutdatedCaches: true
