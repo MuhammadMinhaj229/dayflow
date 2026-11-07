@@ -246,6 +246,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isAndroidNative()) return;
+    let active = true;
+    void initializeNativeWorkspace()
+      .then(() => {
+        if (active) {
+          setNativeWorkspaceReady(true);
+          setNativeWorkspaceError("");
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setNativeWorkspaceReady(false);
+          setNativeWorkspaceError(cause instanceof Error ? cause.message : "Android private workspace could not be be created.");
+        }
+      });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
     const handleOnline = () => setOnline(true);
     const handleOffline = () => setOnline(false);
     window.addEventListener("online", handleOnline);
