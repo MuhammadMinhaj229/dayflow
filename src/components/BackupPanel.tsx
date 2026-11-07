@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createEncryptedBackup, restoreEncryptedBackup } from "../db/backup";
+import { exportBackupWithAndroidPicker, isAndroidNative, pickBackupWithAndroidPicker, saveBackupToAndroidPrivateStorage } from "../native/dayflow-native";
 
 export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> }) {
   const [exportPassphrase, setExportPassphrase] = useState("");
@@ -20,15 +21,24 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
     setBusy("export");
     try {
       const blob = await createEncryptedBackup(exportPassphrase);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "dayflow-backup-" + new Date().toISOString().slice(0, 10) + ".dayflow";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      setMessage("Encrypted backup created. Keep the file and passphrase in separate safe places.");
+      const fileName = "dayflow-backup-" + new Date().toISOString().slice(0, 10) + ".dayflow";
+      if (isAndroidNative()) {
+        await saveBackupToAndroidPrivateStorage(blob, fileName);
+        const exported = await exportBackupWithAndroidPicker(blob, fileName);
+        setMessage(exported.exported
+          ? "Encrypted backup saved in DayFlow's private workspace and exported to your chosen location."
+          : "Encrypted backup saved in DayFlow's private workspace. External export was cancelled.");
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setMessage("Encrypted backup created. Keep the file and passphrase in separate safe places.");
+      }
       setExportPassphrase("");
       setConfirmPassphrase("");
     } catch (cause) {
@@ -41,7 +51,16 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
   async function restoreBackup() {
     setError("");
     setMessage("");
-    if (!selectedFile) {
+    let fileToRestore = selectedFile;
+    if (!fileToRestore && isAndroidNative()) {
+      try {
+        fileToRestore = await pickBackupWithAndroidPicker();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "The backup could not be selected.");
+        return;
+      }
+    }
+    if (!fileToRestore) {
       setError("Choose a DayFlow backup file first.");
       return;
     }
@@ -50,7 +69,7 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
     }
     setBusy("restore");
     try {
-      const counts = await restoreEncryptedBackup(selectedFile, restorePassphrase);
+      const counts = await restoreEncryptedBackup(fileToRestore, restorePassphrase);
       await onRestored();
       setMessage("Restore completed: " + counts.projectCount + " projects and " + counts.taskCount + " tasks are now in this workspace.");
       setSelectedFile(null);
@@ -87,23 +106,33 @@ export function BackupPanel({ onRestored }: { onRestored: () => Promise<void> })
           </label>
           <button className="button button-primary" type="button" disabled={busy !== null || exportPassphrase.length < 12 || !confirmPassphrase}
             onClick={() => void exportBackup()}>
-            {busy === "export" ? "Encrypting…" : "Download backup"}
+            {busy === "export" ? "Encrypting…" : isAndroidNative() ? "Save encrypted backup" : "Download backup"}
           </button>
         </div>
         <div className="backup-card">
           <h3>Restore from backup</h3>
           <p>Restore validates the file, decrypts it and checks relational integrity before replacing local records.</p>
-          <label className="field">
-            <span>DayFlow backup file</span>
-            <input type="file" accept=".dayflow,application/vnd.dayflow.backup+json,application/json"
-              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
-          </label>
+          {isAndroidNative() ? (
+            <div className="field">
+              <span>DayFlow backup file</span>
+              <button className="button button-outline" type="button" disabled={busy !== null}
+                onClick={() => void pickBackupWithAndroidPicker().then(setSelectedFile).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "The backup could not be selected."))}>
+                {selectedFile ? selectedFile.name : "Choose backup from device"}
+              </button>
+            </div>
+          ) : (
+            <label className="field">
+              <span>DayFlow backup file</span>
+              <input type="file" accept=".dayflow,application/vnd.dayflow.backup+json,application/json"
+                onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
+            </label>
+          )}
           <label className="field">
             <span>Backup passphrase</span>
             <input type="password" autoComplete="current-password" value={restorePassphrase}
               onChange={(event) => setRestorePassphrase(event.target.value)} />
           </label>
-          <button className="button button-outline" type="button" disabled={busy !== null || !selectedFile || restorePassphrase.length < 12}
+          <button className="button button-outline" type="button" disabled={busy !== null || (!selectedFile && !isAndroidNative()) || restorePassphrase.length < 12}
             onClick={() => void restoreBackup()}>
             {busy === "restore" ? "Validating and restoring…" : "Restore workspace"}
           </button>
