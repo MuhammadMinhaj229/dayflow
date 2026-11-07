@@ -2,47 +2,59 @@
 
 **DayFlow V3 — Personal Operations OS**
 
-A local-first personal workspace built around one device-owned data store. The application is designed for a shared React codebase that can run as a browser-installed PWA and inside a future Capacitor Android shell.
+DayFlow is a local-first personal workspace with one shared React + TypeScript codebase for the browser PWA and the Capacitor Android shell. The device owns task and project records; the web deployment serves static application assets only.
 
-## V3 principles
+## Product and data principles
 
-- The device is the source of truth for tasks and projects.
 - No MongoDB, hosted task database, account-based task sync or direct ChatGPT integration.
-- Local PostgreSQL through PGlite; the current browser build persists it in IndexedDB.
-- All five existing modules remain part of the product: PHFI Research, Career Operations, AGM Studio / Business, Projects Lab, and Systems & Access.
-- Task changes are stored locally and remain available offline after the app has loaded successfully.
-- Gmail integration is planned as a separate, explicit, read-only metadata sync through a native local MCP service. It is not implemented in this milestone.
-- User task contents and Gmail metadata are not sent to the DayFlow Vercel deployment.
+- Five existing modules: PHFI Research, Career Operations, AGM Studio / Business, Projects Lab, and Systems & Access.
+- PGlite provides the local PostgreSQL-compatible database. The current web and Android WebView build uses IndexedDB persistence.
+- Task and project data stay in the device/browser origin. They are not sent to the DayFlow Vercel deployment.
+- Do not enter PHFI participant or child study data, identifiable research records or responses into DayFlow.
+- Gmail metadata sync/MCP is a planned optional integration and is not part of the current release.
 
 ## Implemented in this branch
 
-- React + TypeScript + Vite application shell.
-- PGlite database persisted with the IndexedDB filesystem.
-- Versioned schema migration and task create/read/update/status/archive operations.
-- Local task event history.
-- Responsive Today dashboard and five-module navigation.
-- Search, quick capture and task edit modal.
-- PWA manifest, offline asset caching and prompted service-worker updates.
-- TypeScript, ESLint, Vitest and Playwright quality gates.
+- React 19 + TypeScript + Vite application, responsive Today dashboard and five-module navigation.
+- PGlite database in a dedicated worker, versioned migrations and local task/project repositories.
+- Task editing for module, project, subtask parent, priority, due date, start time, estimate, progress, next action, blocker and notes.
+- Task status history, project history, hierarchy validation, reversible task/project archive batches and restore.
+- Encrypted workspace export/import using AES-256-GCM with a PBKDF2-SHA-256 passphrase-derived key.
+- PWA manifest and service worker. The offline precache includes the PGlite JavaScript, WASM and .data assets, so the database can initialise after a cold offline reload.
+- Android Capacitor shell bootstrap, app-private DayFlow workspace, Android system file picker for backup import/export, and Android Keystore AES-GCM primitives for device secrets.
+- GitHub Actions gates for dependency audit, TypeScript, ESLint, unit/database tests, production build, Playwright offline persistence, and Android debug APK compilation.
 
-## Not yet implemented
+## Known release gaps
 
-Native Android/Capacitor project, Android private file workspace, encrypted backup/restore, database encryption, vector search, Gmail OAuth/sync/MCP, Android background work, native widgets and production release workflow.
+These are not represented as completed features:
 
-## Storage and privacy
+- Gmail OAuth, incremental metadata sync, local MCP server and Android background sync.
+- Vector/semantic search and local embedding model lifecycle.
+- Dedicated milestone, time-block, contacts/opportunities/referrals, subscription and integration-management data screens beyond the current task/project workspace.
+- A signed Android release, Play Store distribution, native web-bundle updater/rollback, Android emulator/device acceptance tests and store signing/secret configuration.
+- Transparent database encryption at rest. The PGlite database in browser-origin IndexedDB is **not** a SQLCipher-equivalent encrypted database.
+- A biometric app lock and native home-screen widget.
 
-The current web app uses PGlite's IndexedDB filesystem. This is persistent browser-origin storage, not a user-visible folder and not a substitute for encrypted backups. Clearing browser/site data or uninstalling a browser profile can remove it. The app does not currently claim end-to-end encryption.
+## Storage and recovery boundaries
 
-The Android shell will add an app-private DayFlow workspace and native backup/export support. OPFS will be evaluated separately for compatible Chromium runtimes; it is not assumed to work across every browser.
+### Browser PWA
 
-Do not enter PHFI participant or child study data into DayFlow.
+The primary database is stored in browser-origin IndexedDB. It is private to the site origin, not a normal user-visible folder. The browser persistent-storage request may reduce automatic eviction where granted, but it does not prevent a user, browser, profile reset or device reset from clearing the data.
+
+The app reports browser storage usage/quota and persistence state. Keep regular encrypted backups outside this device. The encrypted backup is portable; the database itself is not transparently encrypted at rest.
+
+### Android shell
+
+On first native launch, DayFlow creates an app-private DayFlow directory for backups, exports, imports, attachments, diagnostics and update manifests. It uses Android's Storage Access Framework when the user explicitly chooses an external backup location. It does not request broad shared-storage permissions.
+
+The primary PGlite database still resides in the WebView's browser-origin storage. App-private backup files are not a second task database. Android app-private data is removed when the app is uninstalled; export a recovery backup before uninstalling or changing devices.
 
 ## Development
 
 Requirements: Node.js 22.13+ and npm.
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -55,12 +67,15 @@ npm test
 npm run build
 npx playwright install chromium
 npm run test:e2e
+npm run android:bootstrap
+npx cap sync android
+cd android && ./gradlew :app:assembleDebug
 ```
 
-## Release policy
+## Release workflow
 
-The V3 migration is developed on `architecture/v3-local-first-gmail-mcp`. The legacy `main` branch and its archive are preserved until the V3 build, local persistence, browser tests and Vercel preview are verified. Do not switch production framework settings or remove legacy files before those gates pass.
+Development happens on the architecture/v3-local-first-gmail-mcp branch. The legacy main branch and its archive remain untouched as rollback sources.
 
-## Architecture
+A Vercel preview is intentionally deferred until the required web and native changes are complete and CI is green. Do not switch the Vercel production framework/root-directory settings or change production environment variables as part of the preview build.
 
-See [docs/architecture-v3-local-first.md](docs/architecture-v3-local-first.md).
+See docs/architecture-v3-local-first.md for the target architecture.

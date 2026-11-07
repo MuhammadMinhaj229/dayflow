@@ -5,8 +5,10 @@ import android.net.Uri;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
+import android.system.ErrnoException;
+import android.system.Os;
 import androidx.activity.result.ActivityResult;
-import com.getcapacitor.ActivityCallback;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -21,6 +23,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.util.Arrays;
+import java.util.UUID;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -77,22 +80,24 @@ public final class DayFlowNativePlugin extends Plugin {
         return output.toByteArray();
     }
 
-    private void atomicWrite(File destination, byte[] bytes) throws Exception {
+    private synchronized void atomicWrite(File destination, byte[] bytes) throws Exception {
         File parent = destination.getParentFile();
         ensureDirectory(parent);
-        File temporary = new File(parent, destination.getName() + ".tmp");
+        File temporary = new File(parent, destination.getName() + "." + UUID.randomUUID() + ".tmp");
         try (FileOutputStream output = new FileOutputStream(temporary)) {
             output.write(bytes);
             output.getFD().sync();
         }
-        if (destination.exists() && !destination.delete()) {
+
+        // POSIX rename atomically replaces an existing file on the same filesystem.
+        // The old backup remains intact if the write or rename fails.
+        try {
+            Os.rename(temporary.getAbsolutePath(), destination.getAbsolutePath());
+        } catch (ErrnoException error) {
             temporary.delete();
-            throw new Exception("DayFlow could not replace the previous file.");
+            throw new Exception("DayFlow could not finish saving the file.", error);
         }
-        if (!temporary.renameTo(destination)) {
-            temporary.delete();
-            throw new Exception("DayFlow could not finish saving the file.");
-        }
+
         destination.setReadable(false, false);
         destination.setWritable(false, false);
         destination.setReadable(true, true);
