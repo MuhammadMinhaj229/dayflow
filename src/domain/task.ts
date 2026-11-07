@@ -110,7 +110,7 @@ export function projectProgress(tasks: readonly Pick<Task, "status" | "progress"
   return Math.round(total / eligible.length);
 }
 
-export function localDateISO(date = new Date(), timeZone = "Asia/Kolkata"): string {
+export function localDateISO(date = new Date(), timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
@@ -126,8 +126,7 @@ export function formatDateLabel(date: string): string {
   return new Intl.DateTimeFormat("en-IN", {
     weekday: "long",
     month: "long",
-    day: "numeric",
-    timeZone: "Asia/Kolkata"
+    day: "numeric"
   }).format(parsed);
 }
 

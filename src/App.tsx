@@ -197,7 +197,7 @@ export default function App() {
   const [projectEditorOpen, setProjectEditorOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [selectedModule, setSelectedModule] = useState<ModuleKey | "all">("all");
-  const [today] = useState(() => localDateISO());
+  const [today, setToday] = useState(() => localDateISO());
   const [loading, setLoading] = useState(true);
   const [databaseError, setDatabaseError] = useState("");
   const [nativeWorkspaceReady, setNativeWorkspaceReady] = useState(!isAndroidNative());
@@ -259,11 +259,26 @@ export default function App() {
       .catch((cause: unknown) => {
         if (active) {
           setNativeWorkspaceReady(false);
-          setNativeWorkspaceError(cause instanceof Error ? cause.message : "Android private workspace could not be be created.");
+          setNativeWorkspaceError(cause instanceof Error ? cause.message : "Android private workspace could not be created.");
         }
       });
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    const refreshLocalDate = () => setToday(localDateISO());
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshLocalDate();
+    };
+    window.addEventListener("focus", refreshLocalDate);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    const interval = window.setInterval(refreshLocalDate, 60_000);
+    return () => {
+      window.removeEventListener("focus", refreshLocalDate);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.clearInterval(interval);
+    };
+  }, []);
+
   useEffect(() => {
     const handleOnline = () => setOnline(true);
     const handleOffline = () => setOnline(false);

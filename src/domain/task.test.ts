@@ -26,6 +26,13 @@ describe("localDateISO", () => {
   });
 });
 
+describe("timezone-aware localDateISO", () => {
+  it("uses the selected timezone when a UTC instant crosses midnight", () => {
+    expect(localDateISO(new Date("2026-11-07T20:00:00.000Z"), "Asia/Kolkata")).toBe("2026-11-08");
+    expect(localDateISO(new Date("2026-11-07T20:00:00.000Z"), "UTC")).toBe("2026-11-07");
+  });
+});
+
 describe("formatDateLabel", () => {
   it("formats a date without moving to the previous day", () => {
     expect(formatDateLabel("2026-11-07")).toContain("7");
