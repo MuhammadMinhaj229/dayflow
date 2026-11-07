@@ -9,7 +9,12 @@ test("creates a task, persists it through reload, and completes it offline", asy
     if (message.type() === "error") runtimeErrors.push(message.text());
   });
 
-  await page.goto("/");
+  const initialResponse = await page.goto("/");
+  expect(initialResponse).not.toBeNull();
+  const securityHeaders = await initialResponse!.allHeaders();
+  expect(securityHeaders["content-security-policy"]).toContain("script-src 'self' 'wasm-unsafe-eval'");
+  expect(securityHeaders["content-security-policy"]).not.toContain("'unsafe-eval'");
+  expect(securityHeaders["x-content-type-options"]).toBe("nosniff");
   await expect(page.getByRole("heading", { name: /make room for what matters/i })).toBeVisible();
 
   const title = "Persisted DayFlow task " + Date.now();
