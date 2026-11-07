@@ -103,7 +103,9 @@ export async function pickBackupWithAndroidPicker(): Promise<File | null> {
   const selected = await Native.pickBackup();
   if (selected.cancelled || !selected.base64) return null;
   const bytes = fromBase64(selected.base64);
-  return new File([bytes], selected.fileName ?? "selected.dayflow", {
+  const safeBytes = new Uint8Array(bytes.byteLength);
+  safeBytes.set(bytes);
+  return new File([safeBytes.buffer], selected.fileName ?? "selected.dayflow", {
     type: "application/vnd.dayflow.backup+json"
   });
 }
