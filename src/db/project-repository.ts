@@ -141,8 +141,8 @@ export async function updateProject(id: string, input: ProjectDraft): Promise<vo
   const timestamp = new Date().toISOString();
 
   await db.transaction(async (tx) => {
-    const current = await tx.query<{ module_key: ModuleKey; name: string; status: ProjectStatus }>(
-      "SELECT module_key,name,status FROM projects WHERE id=$1 AND archived_at IS NULL FOR UPDATE",
+    const current = await tx.query<{ module_key: ModuleKey; name: string; description: string | null; status: ProjectStatus; priority: Priority; due_date: string | null }>(
+      "SELECT module_key,name,description,status,priority,due_date::text AS due_date FROM projects WHERE id=$1 AND archived_at IS NULL FOR UPDATE",
       [id]
     );
     const existing = current.rows[0];
@@ -150,11 +150,11 @@ export async function updateProject(id: string, input: ProjectDraft): Promise<vo
 
     if (existing.module_key !== draft.moduleKey) {
       const linked = await tx.query<{ id: string }>(
-        "SELECT id FROM tasks WHERE project_id=$1 AND archived_at IS NULL LIMIT 1",
+        "SELECT id FROM tasks WHERE project_id=$1 LIMIT 1",
         [id]
       );
       if (linked.rows.length > 0) {
-        throw new Error("Move the project's tasks to the new module before changing the project module.");
+        throw new Error("Unassign the project's tasks before changing the project module, then reassign them afterward.");
       }
     }
 
@@ -167,8 +167,11 @@ export async function updateProject(id: string, input: ProjectDraft): Promise<vo
 
     const changes = {
       name: existing.name === draft.name ? undefined : {from:existing.name,to:draft.name},
+      description: existing.description === draft.description ? undefined : {from:existing.description,to:draft.description},
       moduleKey: existing.module_key === draft.moduleKey ? undefined : {from:existing.module_key,to:draft.moduleKey},
-      status: existing.status === draft.status ? undefined : {from:existing.status,to:draft.status}
+      status: existing.status === draft.status ? undefined : {from:existing.status,to:draft.status},
+      priority: existing.priority === draft.priority ? undefined : {from:existing.priority,to:draft.priority},
+      dueDate: existing.due_date === draft.dueDate ? undefined : {from:existing.due_date,to:draft.dueDate}
     };
     await insertProjectEvent(tx,id,"project.updated",{changes},timestamp);
   });
