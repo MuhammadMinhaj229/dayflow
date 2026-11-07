@@ -15,9 +15,11 @@ vi.mock("./client", () => ({
 import {
   archiveTask,
   createTask,
+  getTaskEvents,
   listArchivedTasks,
   listTasks,
   restoreTask,
+  setTaskStatus,
   updateTask
 } from "./task-repository";
 import {
@@ -70,6 +72,23 @@ beforeEach(async () => {
 afterEach(async () => {
   databaseState.current = null;
   await db.close();
+});
+
+describe("task audit history", () => {
+  it("records the actual previous and next status and skips no-op transitions", async () => {
+    const task = await createTask(taskDraft({ title: "Audit status transitions" }));
+    await setTaskStatus(task.id, "next");
+    await setTaskStatus(task.id, "in_progress");
+    await setTaskStatus(task.id, "done");
+
+    const events = await getTaskEvents(task.id);
+    const transitions = events.filter((event) => event.eventType === "task.status_changed");
+    expect(transitions).toHaveLength(2);
+    expect(transitions.map((event) => event.metadata)).toEqual([
+      { from: "in_progress", to: "done" },
+      { from: "next", to: "in_progress" }
+    ]);
+  });
 });
 
 describe("task hierarchy and archive batches", () => {
