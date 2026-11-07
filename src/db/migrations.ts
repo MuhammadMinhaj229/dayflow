@@ -55,7 +55,7 @@ const MIGRATIONS = [
       "CREATE INDEX IF NOT EXISTS projects_module_status_idx ON projects (module_key, status) WHERE archived_at IS NULL;" +
       "CREATE INDEX IF NOT EXISTS tasks_project_order_idx ON tasks (project_id, order_index) WHERE archived_at IS NULL;" +
       "CREATE INDEX IF NOT EXISTS tasks_parent_order_idx ON tasks (parent_task_id, order_index) WHERE archived_at IS NULL;"
-  }
+  },
   {
     version: 3,
     sql:
