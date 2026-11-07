@@ -119,10 +119,21 @@ async function validateReferences(
       "SELECT module_key, archived_at FROM projects WHERE id = $1",
       [draft.projectId]
     );
-    const row = project.rows[0];
-    if (!row || row.archived_at) throw new Error("Select an active project.");
-    if (row.module_key !== draft.moduleKey) {
+    const projectRow = project.rows[0];
+    if (!projectRow || projectRow.archived_at) throw new Error("Select an active project.");
+    if (projectRow.module_key !== draft.moduleKey) {
       throw new Error("A task and its project must belong to the same module.");
+    }
+  }
+
+  if (currentTaskId) {
+    const incompatibleChild = await tx.query<{ id: string }>(
+      "SELECT id FROM tasks WHERE parent_task_id=$1 " +
+        "AND (module_key<>$2 OR project_id IS DISTINCT FROM $3) LIMIT 1",
+      [currentTaskId, draft.moduleKey, draft.projectId]
+    );
+    if (incompatibleChild.rows[0]) {
+      throw new Error("Move or detach this task's subtasks before changing its module or project.");
     }
   }
 
@@ -133,12 +144,12 @@ async function validateReferences(
     "SELECT id, module_key, project_id FROM tasks WHERE id = $1 AND archived_at IS NULL",
     [draft.parentTaskId]
   );
-  const row = parent.rows[0];
-  if (!row) throw new Error("Select an active parent task.");
-  if (row.module_key !== draft.moduleKey) {
+  const parentRow = parent.rows[0];
+  if (!parentRow) throw new Error("Select an active parent task.");
+  if (parentRow.module_key !== draft.moduleKey) {
     throw new Error("A subtask must belong to the same module as its parent.");
   }
-  if ((row.project_id ?? null) !== (draft.projectId ?? null)) {
+  if ((parentRow.project_id ?? null) !== (draft.projectId ?? null)) {
     throw new Error("A subtask must belong to the same project as its parent.");
   }
 
