@@ -280,15 +280,22 @@ export async function setTaskStatus(id: string, status: TaskStatus): Promise<voi
   const timestamp = new Date().toISOString();
 
   await db.transaction(async (tx) => {
-    const result = await tx.query<{ id: string; status: TaskStatus }>(
+    const current = await tx.query<{ status: TaskStatus }>(
+      "SELECT status FROM tasks WHERE id=$1 AND archived_at IS NULL FOR UPDATE",
+      [id]
+    );
+    const previous = current.rows[0]?.status;
+    if (!previous) throw new Error("The task could not be updated.");
+    if (previous === status) return;
+
+    const result = await tx.query<{ id: string }>(
       "UPDATE tasks SET status=$2, completed_at=$3, " +
         "progress=CASE WHEN $2='done' THEN 100 ELSE CASE WHEN progress=100 THEN 0 ELSE progress END END, " +
-        "updated_at=$4 WHERE id=$1 AND archived_at IS NULL RETURNING id,status",
+        "updated_at=$4 WHERE id=$1 AND archived_at IS NULL RETURNING id",
       [id, status, status === "done" ? timestamp : null, timestamp]
     );
-    const row = result.rows[0];
-    if (!row) throw new Error("The task could not be updated.");
-    await insertEvent(tx, id, "task.status_changed", { from: row.status, to: status }, timestamp);
+    if (!result.rows[0]) throw new Error("The task could not be updated.");
+    await insertEvent(tx, id, "task.status_changed", { from: previous, to: status }, timestamp);
   });
 }
 
