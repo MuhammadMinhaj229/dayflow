@@ -183,6 +183,19 @@ export async function archiveProject(id: string): Promise<void> {
   const batchId = crypto.randomUUID();
 
   await db.transaction(async (tx) => {
+    const activeDescendantOfArchivedTask = await tx.query<{ id: string }>(
+      "WITH RECURSIVE descendants(id) AS (" +
+        "SELECT id FROM tasks WHERE project_id=$1 AND archived_at IS NOT NULL " +
+        "UNION " +
+        "SELECT child.id FROM tasks child JOIN descendants parent ON child.parent_task_id=parent.id" +
+      ") SELECT task.id FROM tasks task JOIN descendants descendant ON descendant.id=task.id " +
+      "WHERE task.archived_at IS NULL LIMIT 1",
+      [id]
+    );
+    if (activeDescendantOfArchivedTask.rows[0]) {
+      throw new Error("Restore or archive the existing task hierarchy before archiving this project.");
+    }
+
     const project = await tx.query<{ id: string }>(
       "UPDATE projects SET archived_at=$2,archive_batch_id=$3,updated_at=$2 " +
         "WHERE id=$1 AND archived_at IS NULL RETURNING id",
