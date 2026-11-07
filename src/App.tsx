@@ -10,7 +10,11 @@ import {
   MODULES, completionRate, createEmptyTaskDraft, formatDateLabel,
   localDateISO, moduleName, type ModuleKey, type Task, type TaskDraft
 } from "./domain/task";
-import { archiveTask, createTask, listTasks, setTaskStatus, updateTask } from "./db/task-repository";
+import { archiveTask, createTask, listArchivedTasks, listTasks, restoreTask, setTaskStatus, updateTask } from "./db/task-repository";
+import { archiveProject, createProject, listProjects, updateProject } from "./db/project-repository";
+import { ProjectEditor } from "./components/ProjectEditor";
+import { BackupPanel } from "./components/BackupPanel";
+import type { Project, ProjectDraft } from "./domain/task";
 
 const moduleIcons = {
   research: FlaskConical,
@@ -31,12 +35,16 @@ function TaskEditor({
   task,
   defaultDate,
   onClose,
-  onSave
+  onSave,
+  projects,
+  tasks
 }: {
   task: Task | null;
   defaultDate: string;
   onClose: () => void;
   onSave: (draft: TaskDraft) => Promise<void>;
+  projects: Project[];
+  tasks: Task[];
 }) {
   const [draft, setDraft] = useState<TaskDraft>(() => task ? {
     title: task.title,
@@ -126,6 +134,35 @@ function TaskEditor({
                 placeholder="The next concrete step" />
             </label>
             <label className="field full">
+          <div className="field-grid">
+            <label className="field">
+              <span>Project</span>
+              <select value={draft.projectId ?? ""} onChange={(event) => {
+                update("projectId", event.target.value || null);
+                update("parentTaskId", null);
+              }}>
+                <option value="">No project</option>
+                {projects.filter((project) => project.moduleKey === draft.moduleKey && project.status !== "completed").map((project) => (
+                  <option key={project.id} value={project.id}>{project.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Parent task</span>
+              <select value={draft.parentTaskId ?? ""} onChange={(event) => update("parentTaskId", event.target.value || null)}>
+                <option value="">No parent (top-level task)</option>
+                {tasks.filter((item) => item.id !== task?.id && item.moduleKey === draft.moduleKey &&
+                  (item.projectId ?? null) === (draft.projectId ?? null) && item.status !== "cancelled").map((item) => (
+                  <option key={item.id} value={item.id}>{item.title}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Estimated minutes</span>
+              <input type="number" min="1" max="100000" step="5" value={draft.estimatedMinutes ?? ""}
+                onChange={(event) => update("estimatedMinutes", event.target.value ? Number(event.target.value) : null)} />
+            </label>
+          </div>
               <span>Blocker</span>
               <input value={draft.blocker ?? ""} onChange={(event) => update("blocker", event.target.value || null)}
                 placeholder="What is holding this up?" />
