@@ -265,3 +265,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .settings-panel { padding: 15px; }
   .backup-card p { min-height: 0; }
 }
+
+.storage-section { display: grid; gap: 13px; }
+.storage-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin-top: 14px; }
+.storage-metrics > div { display: grid; gap: 5px; padding: 12px; border: 1px solid #edf0e8; border-radius: 10px; background: #fafbf6; }
+.storage-metrics span { color: #9aa59a; font-size: 9px; }
+.storage-metrics strong { color: #536c57; font-size: 12px; }
+.storage-meter { height: 6px; overflow: hidden; margin-top: 12px; border-radius: 99px; background: #e8eee5; }
+.storage-meter span { display: block; height: 100%; border-radius: inherit; background: #749577; }
+.storage-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.storage-actions .button { min-height: 34px; }
+@media (max-width: 700px) {
+  .storage-metrics { grid-template-columns: 1fr; }
+  .storage-metrics > div { grid-template-columns: 1fr auto; align-items: center; }
+}
