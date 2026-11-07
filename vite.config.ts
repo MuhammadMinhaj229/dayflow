@@ -7,8 +7,10 @@ function dayFlowServiceWorker(): Plugin {
     name: "dayflow-service-worker",
     apply: "build",
     generateBundle(_output, bundle) {
+      // Every emitted output entry is part of the offline application. Avoid
+      // extension allow-lists: bundler/runtime asset suffixes can change.
       const files = Object.keys(bundle)
-        .filter((file) => /\\.(?:js|css|html|svg|woff2|wasm|data)$/i.test(file))
+        .filter((file) => file !== "sw.js")
         .sort();
       const precacheUrls = [
         "/",

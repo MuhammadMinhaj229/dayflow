@@ -72,6 +72,18 @@ test("creates a task, persists it through reload, and completes it offline", asy
     intervals: [250, 500, 1000]
   }).toBe(true);
 
+  const cachedAssetUrls = await page.evaluate(async () => {
+    const names = await caches.keys();
+    const urls = await Promise.all(names.map(async (name) =>
+      (await (await caches.open(name)).keys()).map((request) => request.url)
+    ));
+    return urls.flat();
+  });
+  expect(cachedAssetUrls.some((url) => url.endsWith(".js"))).toBe(true);
+  expect(cachedAssetUrls.some((url) => url.endsWith(".css"))).toBe(true);
+  expect(cachedAssetUrls.some((url) => url.endsWith(".wasm"))).toBe(true);
+  expect(cachedAssetUrls.some((url) => url.endsWith(".data"))).toBe(true);
+
   await context.setOffline(true);
   await page.reload();
   try {
