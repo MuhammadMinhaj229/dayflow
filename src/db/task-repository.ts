@@ -316,6 +316,19 @@ export async function archiveTask(id: string): Promise<void> {
   const batchId = crypto.randomUUID();
 
   await db.transaction(async (tx) => {
+    const alreadyArchivedDescendant = await tx.query<{ id: string }>(
+      "WITH RECURSIVE descendants(id) AS (" +
+        "SELECT id FROM tasks WHERE id=$1 " +
+        "UNION " +
+        "SELECT child.id FROM tasks child JOIN descendants parent ON child.parent_task_id=parent.id" +
+      ") SELECT task.id FROM tasks task JOIN descendants descendant ON descendant.id=task.id " +
+      "WHERE task.id<>$1 AND task.archived_at IS NOT NULL LIMIT 1",
+      [id]
+    );
+    if (alreadyArchivedDescendant.rows[0]) {
+      throw new Error("Restore archived subtasks before archiving this parent so the entire task tree stays recoverable.");
+    }
+
     const result = await tx.query<{ id: string }>(
       "WITH RECURSIVE descendants(id) AS (" +
         "SELECT id FROM tasks WHERE id=$1 AND archived_at IS NULL " +
