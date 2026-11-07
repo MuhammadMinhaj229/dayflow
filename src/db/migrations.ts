@@ -56,6 +56,22 @@ const MIGRATIONS = [
       "CREATE INDEX IF NOT EXISTS tasks_project_order_idx ON tasks (project_id, order_index) WHERE archived_at IS NULL;" +
       "CREATE INDEX IF NOT EXISTS tasks_parent_order_idx ON tasks (parent_task_id, order_index) WHERE archived_at IS NULL;"
   }
+  {
+    version: 3,
+    sql:
+      "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archive_batch_id TEXT;" +
+      "ALTER TABLE projects ADD COLUMN IF NOT EXISTS archive_batch_id TEXT;" +
+      "CREATE INDEX IF NOT EXISTS tasks_archive_batch_idx ON tasks (archive_batch_id) WHERE archive_batch_id IS NOT NULL;" +
+      "CREATE INDEX IF NOT EXISTS projects_archive_batch_idx ON projects (archive_batch_id) WHERE archive_batch_id IS NOT NULL;" +
+      "CREATE TABLE IF NOT EXISTS project_events (" +
+        "id TEXT PRIMARY KEY, " +
+        "project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, " +
+        "event_type TEXT NOT NULL, " +
+        "metadata JSONB NOT NULL DEFAULT '{}'::jsonb, " +
+        "created_at TIMESTAMPTZ NOT NULL" +
+      ");" +
+      "CREATE INDEX IF NOT EXISTS project_events_project_created_idx ON project_events (project_id, created_at DESC);"
+  }
 ] as const;
 
 export async function applyMigrations(db: PGlite): Promise<void> {

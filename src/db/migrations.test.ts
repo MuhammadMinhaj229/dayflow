@@ -14,17 +14,22 @@ describe("PGlite schema migrations", () => {
       );
       const tables = await db.query<{ table_name: string }>(
         "SELECT table_name FROM information_schema.tables " +
-          "WHERE table_schema = 'public' AND table_name IN ('projects','tasks','task_events') " +
+          "WHERE table_schema = 'public' AND table_name IN ('projects','tasks','task_events','project_events') " +
           "ORDER BY table_name"
       );
       const taskColumns = await db.query<{ column_name: string }>(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'tasks'"
       );
 
-      expect(versions.rows.map((row) => row.version)).toEqual([1, 2]);
-      expect(tables.rows.map((row) => row.table_name)).toEqual(["projects", "task_events", "tasks"]);
+      expect(versions.rows.map((row) => row.version)).toEqual([1, 2, 3]);
+      expect(tables.rows.map((row) => row.table_name)).toEqual(["project_events", "projects", "task_events", "tasks"]);
       expect(taskColumns.rows.map((row) => row.column_name)).toContain("project_id");
       expect(taskColumns.rows.map((row) => row.column_name)).toContain("parent_task_id");
+      expect(taskColumns.rows.map((row) => row.column_name)).toContain("archive_batch_id");
+      const projectColumns = await db.query<{ column_name: string }>(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'projects'"
+      );
+      expect(projectColumns.rows.map((row) => row.column_name)).toContain("archive_batch_id");
 
       const timestamp = new Date().toISOString();
       await db.query(
