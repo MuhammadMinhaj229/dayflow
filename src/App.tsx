@@ -16,6 +16,7 @@ import { ProjectEditor } from "./components/ProjectEditor";
 import { BackupPanel } from "./components/BackupPanel";
 import { StorageStatus } from "./components/StorageStatus";
 import type { Project, ProjectDraft } from "./domain/task";
+import { initializeNativeWorkspace, isAndroidNative } from "./native/dayflow-native";
 
 const moduleIcons = {
   research: FlaskConical,
@@ -199,6 +200,8 @@ export default function App() {
   const [today] = useState(() => localDateISO());
   const [loading, setLoading] = useState(true);
   const [databaseError, setDatabaseError] = useState("");
+  const [nativeWorkspaceReady, setNativeWorkspaceReady] = useState(!isAndroidNative());
+  const [nativeWorkspaceError, setNativeWorkspaceError] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [search, setSearch] = useState("");
