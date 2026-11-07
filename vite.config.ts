@@ -28,6 +28,8 @@ export default defineConfig({
         icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }]
       },
       workbox: {
+        // Claim the first installed worker for the open tab without forcing pending updates to activate.
+        clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,svg,woff2,wasm}"],
         maximumFileSizeToCacheInBytes: 25 * 1024 * 1024,
         navigateFallback: "/index.html",
