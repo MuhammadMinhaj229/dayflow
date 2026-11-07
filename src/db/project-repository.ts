@@ -34,6 +34,7 @@ const PROJECT_SELECT =
     "AVG(CASE WHEN t.status='done' THEN 100 WHEN t.status='cancelled' THEN NULL ELSE t.progress END)::float8 AS progress, " +
     "p.created_at::text AS created_at, p.updated_at::text AS updated_at " +
   "FROM projects p LEFT JOIN tasks t ON t.project_id=p.id AND t.archived_at IS NULL ";
+const ARCHIVED_PROJECT_SELECT = PROJECT_SELECT.replace(" AND t.archived_at IS NULL", "");
 
 function mapProject(row: ProjectRow): Project {
   return {
@@ -106,8 +107,9 @@ export async function listProjects(options: {
   }
 
   const where = conditions.length > 0 ? "WHERE " + conditions.join(" AND ") + " " : "";
+  const select = options.archivedOnly ? ARCHIVED_PROJECT_SELECT : PROJECT_SELECT;
   const result = await db.query<ProjectRow>(
-    PROJECT_SELECT + where + "GROUP BY p.id ORDER BY p.due_date NULLS LAST, p.updated_at DESC",
+    select + where + "GROUP BY p.id ORDER BY p.due_date NULLS LAST, p.updated_at DESC",
     values
   );
   return result.rows.map(mapProject);

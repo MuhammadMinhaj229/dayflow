@@ -202,6 +202,22 @@ describe("project lifecycle", () => {
     expect(history.map((event) => event.eventType)).toEqual(["project.restored", "project.archived", "project.created"]);
   });
 
+  it("requires the parent project to be restored before a separately archived task", async () => {
+    const project = await createProject(projectDraft);
+    const task = await createTask(taskDraft({ title: "Individually archived project task", projectId: project.id }));
+    await archiveTask(task.id);
+    await archiveProject(project.id);
+
+    const archived = await listArchivedProjects();
+    expect(archived[0]?.taskCount).toBe(1);
+    await expect(restoreTask(task.id)).rejects.toThrow(/restore the project first/i);
+
+    await restoreProject(project.id);
+    expect(await listTasks()).toHaveLength(0);
+    await restoreTask(task.id);
+    expect((await listTasks()).map((item) => item.id)).toEqual([task.id]);
+  });
+
   it("prevents restoring a project-batched task without its archived project", async () => {
     const project = await createProject(projectDraft);
     const task = await createTask(taskDraft({ title: "Task from archived project", projectId: project.id }));

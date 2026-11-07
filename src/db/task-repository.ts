@@ -379,12 +379,21 @@ export async function restoreTask(id: string): Promise<void> {
   const timestamp = new Date().toISOString();
 
   await db.transaction(async (tx) => {
-    const anchor = await tx.query<{ archive_batch_id: string | null }>(
-      "SELECT archive_batch_id FROM tasks WHERE id=$1 AND archived_at IS NOT NULL FOR UPDATE",
+    const anchor = await tx.query<{ archive_batch_id: string | null; project_id: string | null }>(
+      "SELECT archive_batch_id,project_id FROM tasks WHERE id=$1 AND archived_at IS NOT NULL FOR UPDATE",
       [id]
     );
     if (!anchor.rows[0]) throw new Error("This archived task could not be restored.");
     const batchId = anchor.rows[0].archive_batch_id;
+    if (anchor.rows[0].project_id) {
+      const parentProject = await tx.query<{ id: string }>(
+        "SELECT id FROM projects WHERE id=$1 AND archived_at IS NOT NULL",
+        [anchor.rows[0].project_id]
+      );
+      if (parentProject.rows[0]) {
+        throw new Error("This task belongs to an archived project. Restore the project first, then restore this task if it was archived separately.");
+      }
+    }
     if (batchId) {
       const projectBatch = await tx.query<{ id: string }>(
         "SELECT id FROM projects WHERE archive_batch_id=$1 AND archived_at IS NOT NULL LIMIT 1",

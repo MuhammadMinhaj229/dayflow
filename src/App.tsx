@@ -655,11 +655,15 @@ export default function App() {
                     <span className={"priority-tag priority-" + project.priority}>{project.priority}</span>
                     <span className="project-status">{project.status.replace("_", " ")}</span>
                   </div>
-                  <button className="project-card-title" onClick={() => {
-                    setSelectedModule(project.moduleKey);
-                    setView("today");
-                    setSearch("");
-                  }}>{project.name}</button>
+                  {view === "archived" ? (
+                    <strong className="project-card-title">{project.name}</strong>
+                  ) : (
+                    <button className="project-card-title" onClick={() => {
+                      setSelectedModule(project.moduleKey);
+                      setView("today");
+                      setSearch("");
+                    }}>{project.name}</button>
+                  )}
                   <p>{project.description || moduleName(project.moduleKey)}</p>
                   <div className="project-progress"><span style={{ width: project.progress + "%" }} /></div>
                   <div className="project-card-meta">
@@ -728,7 +732,11 @@ export default function App() {
                   <span className="task-time">{task.scheduledStart ? task.scheduledStart.slice(0, 5) : task.dueDate ?? "Flexible"}</span>
                   {view === "archived" ? (
                     <button className="task-icon-action" aria-label={"Restore: " + task.title}
-                      disabled={pendingWrites > 0} onClick={() => void restore(task).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Task restore failed."))}>
+                      disabled={pendingWrites > 0 || Boolean(task.projectId && archivedProjects.some((project) => project.id === task.projectId))}
+                      title={task.projectId && archivedProjects.some((project) => project.id === task.projectId)
+                        ? "Restore the parent project first."
+                        : "Restore this task"}
+                      onClick={() => void restore(task).catch((cause: unknown) => setDatabaseError(cause instanceof Error ? cause.message : "Task restore failed."))}>
                       <RefreshCw size={15} />
                     </button>
                   ) : (
