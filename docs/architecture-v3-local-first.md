@@ -2,9 +2,15 @@
 
 **Architecture decision record and implementation blueprint**  
 **Research date:** 7 November 2026  
-**Status:** Proposed target architecture; implementation not yet migrated  
+**Status:** Active V3 implementation; see `docs/implementation-status.md` for verified scope and `docs/release-checklist.md` for release gates  
 **Product continuity:** Preserve the DayFlow V2 product scope and five existing modules  
 **Data policy:** Local-first; no MongoDB, no hosted task database, no direct ChatGPT integration
+
+---
+
+## Implementation note
+
+This document records the target architecture and design decisions. It is not evidence that every proposed module or native capability has shipped. The live implementation status, automated test coverage and outstanding release blockers are tracked separately in `docs/implementation-status.md` and `docs/release-checklist.md`.
 
 ---
 
