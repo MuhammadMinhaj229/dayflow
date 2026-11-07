@@ -14,6 +14,7 @@ import { archiveTask, createTask, listArchivedTasks, listTasks, restoreTask, set
 import { archiveProject, createProject, listProjects, updateProject } from "./db/project-repository";
 import { ProjectEditor } from "./components/ProjectEditor";
 import { BackupPanel } from "./components/BackupPanel";
+import { StorageStatus } from "./components/StorageStatus";
 import type { Project, ProjectDraft } from "./domain/task";
 
 const moduleIcons = {
@@ -603,6 +604,7 @@ export default function App() {
         </section>
 
         <section className="storage-section" id="storage-note">
+          <StorageStatus />
           <BackupPanel onRestored={refreshWorkspace} />
           <p className="storage-boundary-note">Browser storage is private to this site and can be cleared by browser settings or device resets. Keep encrypted backups outside this device. The current PWA database is not transparently encrypted at rest.</p>
         </section>
