@@ -6,10 +6,14 @@ interface TaskRow {
   title: string;
   details: string | null;
   module_key: ModuleKey;
+  project_id: string | null;
+  parent_task_id: string | null;
+  order_index: number;
   status: TaskStatus;
   priority: Priority;
   due_date: string | null;
   scheduled_start: string | null;
+  estimated_minutes: number | null;
   next_action: string | null;
   blocker: string | null;
   progress: number;
@@ -18,9 +22,25 @@ interface TaskRow {
   updated_at: string;
 }
 
+export interface TaskEvent {
+  id: string;
+  taskId: string;
+  eventType: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+interface EventRow {
+  id: string;
+  task_id: string;
+  event_type: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
 const TASK_COLUMNS =
-  "id, title, details, module_key, status, priority, " +
-  "due_date::text AS due_date, scheduled_start::text AS scheduled_start, " +
+  "id, title, details, module_key, project_id, parent_task_id, order_index, status, priority, " +
+  "due_date::text AS due_date, scheduled_start::text AS scheduled_start, estimated_minutes, " +
   "next_action, blocker, progress::float8 AS progress, notes, " +
   "created_at::text AS created_at, updated_at::text AS updated_at";
 
@@ -30,10 +50,14 @@ function mapTask(row: TaskRow): Task {
     title: row.title,
     details: row.details,
     moduleKey: row.module_key,
+    projectId: row.project_id,
+    parentTaskId: row.parent_task_id,
+    orderIndex: Number(row.order_index),
     status: row.status,
     priority: row.priority,
     dueDate: row.due_date,
     scheduledStart: row.scheduled_start,
+    estimatedMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
     nextAction: row.next_action,
     blocker: row.blocker,
     progress: Number(row.progress),
@@ -48,47 +72,117 @@ function nullable(value: string | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-export async function listTasks(): Promise<Task[]> {
-  const db = await getDatabase();
-  const result = await db.query<TaskRow>(
-    "SELECT " + TASK_COLUMNS +
-      " FROM tasks WHERE archived_at IS NULL " +
-      "ORDER BY (due_date IS NULL), due_date ASC, " +
-      "CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, " +
-      "created_at ASC"
-  );
-  return result.rows.map(mapTask);
-}
-
-export async function createTask(draft: TaskDraft): Promise<Task> {
+function normaliseDraft(draft: TaskDraft): TaskDraft {
   const title = draft.title.trim();
   if (!title) throw new Error("A task title is required.");
   if (title.length > 240) throw new Error("Task titles must be 240 characters or fewer.");
 
+  const progress = Number(draft.progress);
+  const estimate = draft.estimatedMinutes === null ? null : Number(draft.estimatedMinutes);
+  if (estimate !== null && (!Number.isInteger(estimate) || estimate < 1 || estimate > 100000)) {
+    throw new Error("Estimate must be a whole number between 1 and 100,000 minutes.");
+  }
+
+  return {
+    ...draft,
+    title,
+    details: nullable(draft.details),
+    nextAction: nullable(draft.nextAction),
+    blocker: nullable(draft.blocker),
+    notes: nullable(draft.notes),
+    projectId: nullable(draft.projectId),
+    parentTaskId: nullable(draft.parentTaskId),
+    dueDate: nullable(draft.dueDate),
+    scheduledStart: nullable(draft.scheduledStart),
+    estimatedMinutes: estimate,
+    orderIndex: Number.isInteger(draft.orderIndex) ? draft.orderIndex : 0,
+    progress: Math.min(100, Math.max(0, Number.isFinite(progress) ? progress : 0))
+  };
+}
+
+async function validateReferences(
+  tx: Awaited<ReturnType<typeof getDatabase>> extends never ? never : any,
+  draft: TaskDraft,
+  currentTaskId?: string
+): Promise<void> {
+  if (draft.projectId) {
+    const project = await tx.query<{ module_key: ModuleKey; archived_at: string | null }>(
+      "SELECT module_key, archived_at FROM projects WHERE id = $1",
+      [draft.projectId]
+    );
+    const row = project.rows[0];
+    if (!row || row.archived_at) throw new Error("Select an active project.");
+    if (row.module_key !== draft.moduleKey) throw new Error("A task and its project must belong to the same module.");
+  }
+
+  if (draft.parentTaskId) {
+    if (draft.parentTaskId === currentTaskId) throw new Error("A task cannot be its own parent.");
+    const parent = await tx.query<{ module_key: ModuleKey; project_id: string | null; id: string }>(
+      "SELECT id, module_key, project_id FROM tasks WHERE id = $1 AND archived_at IS NULL",
+      [draft.parentTaskId]
+    );
+    const row = parent.rows[0];
+    if (!row) throw new Error("Select an active parent task.");
+    if (row.module_key !== draft.moduleKey) throw new Error("A subtask must belong to the same module as its parent.");
+    if ((row.project_id ?? null) !== (draft.projectId ?? null)) {
+      throw new Error("A subtask must belong to the same project as its parent.");
+    }
+  }
+}
+
+export async function listTasks(options: { includeArchived?: boolean; moduleKey?: ModuleKey } = {}): Promise<Task[]> {
+  const db = await getDatabase();
+  const clauses: string[] = [];
+  const values: unknown[] = [];
+  if (!options.includeArchived) clauses.push("archived_at IS NULL");
+  if (options.moduleKey) {
+    values.push(options.moduleKey);
+    clauses.push("module_key = $" + values.length);
+  }
+  const where = clauses.length > 0 ? " WHERE " + clauses.join(" AND ") : "";
+  const result = await db.query<TaskRow>(
+    "SELECT " + TASK_COLUMNS + " FROM tasks" + where +
+    " ORDER BY order_index ASC, (due_date IS NULL), due_date ASC, " +
+    "CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, " +
+    "created_at ASC",
+    values
+  );
+  return result.rows.map(mapTask);
+}
+
+export async function listArchivedTasks(): Promise<Task[]> {
+  const db = await getDatabase();
+  const result = await db.query<TaskRow>(
+    "SELECT " + TASK_COLUMNS + " FROM tasks WHERE archived_at IS NOT NULL ORDER BY archived_at DESC"
+  );
+  return result.rows.map(mapTask);
+}
+
+export async function createTask(input: TaskDraft): Promise<Task> {
+  const draft = normaliseDraft(input);
   const db = await getDatabase();
   const id = crypto.randomUUID();
   const timestamp = new Date().toISOString();
 
   return db.transaction(async (tx) => {
+    await validateReferences(tx, draft);
     const result = await tx.query<TaskRow>(
       "INSERT INTO tasks (" +
-        "id, title, details, module_key, status, priority, due_date, scheduled_start, " +
-        "next_action, blocker, progress, notes, created_at, updated_at" +
-      ") VALUES ($1,$2,$3,$4,'next',$5,$6,$7,$8,$9,$10,$11,$12,$12) RETURNING " +
+        "id, title, details, module_key, project_id, parent_task_id, order_index, status, priority, " +
+        "due_date, scheduled_start, estimated_minutes, next_action, blocker, progress, notes, created_at, updated_at" +
+      ") VALUES ($1,$2,$3,$4,$5,$6,$7,'next',$8,$9,$10,$11,$12,$13,$14,$15,$16,$16) RETURNING " +
       TASK_COLUMNS,
       [
-        id, title, nullable(draft.details), draft.moduleKey, draft.priority,
-        nullable(draft.dueDate), nullable(draft.scheduledStart),
-        nullable(draft.nextAction), nullable(draft.blocker),
-        Math.min(100, Math.max(0, Number(draft.progress) || 0)),
-        nullable(draft.notes), timestamp
+        id, draft.title, draft.details, draft.moduleKey, draft.projectId, draft.parentTaskId,
+        draft.orderIndex, draft.priority, draft.dueDate, draft.scheduledStart, draft.estimatedMinutes,
+        draft.nextAction, draft.blocker, draft.progress, draft.notes, timestamp
       ]
     );
 
     await tx.query(
       "INSERT INTO task_events (id, task_id, event_type, metadata, created_at) " +
-        "VALUES ($1,$2,'task.created','{}'::jsonb,$3)",
-      [crypto.randomUUID(), id, timestamp]
+        "VALUES ($1,$2,'task.created',$3::jsonb,$4)",
+      [crypto.randomUUID(), id, JSON.stringify({ title: draft.title, moduleKey: draft.moduleKey }), timestamp]
     );
 
     const row = result.rows[0];
@@ -97,25 +191,22 @@ export async function createTask(draft: TaskDraft): Promise<Task> {
   });
 }
 
-export async function updateTask(id: string, draft: TaskDraft): Promise<Task> {
-  const title = draft.title.trim();
-  if (!title) throw new Error("A task title is required.");
-  if (title.length > 240) throw new Error("Task titles must be 240 characters or fewer.");
-
+export async function updateTask(id: string, input: TaskDraft): Promise<Task> {
+  const draft = normaliseDraft(input);
   const db = await getDatabase();
   const timestamp = new Date().toISOString();
 
   return db.transaction(async (tx) => {
+    await validateReferences(tx, draft, id);
     const result = await tx.query<TaskRow>(
-      "UPDATE tasks SET title=$2, details=$3, module_key=$4, priority=$5, due_date=$6, " +
-        "scheduled_start=$7, next_action=$8, blocker=$9, progress=$10, notes=$11, updated_at=$12 " +
+      "UPDATE tasks SET title=$2, details=$3, module_key=$4, project_id=$5, parent_task_id=$6, " +
+        "order_index=$7, priority=$8, due_date=$9, scheduled_start=$10, estimated_minutes=$11, " +
+        "next_action=$12, blocker=$13, progress=$14, notes=$15, updated_at=$16 " +
         "WHERE id=$1 AND archived_at IS NULL RETURNING " + TASK_COLUMNS,
       [
-        id, title, nullable(draft.details), draft.moduleKey, draft.priority,
-        nullable(draft.dueDate), nullable(draft.scheduledStart),
-        nullable(draft.nextAction), nullable(draft.blocker),
-        Math.min(100, Math.max(0, Number(draft.progress) || 0)),
-        nullable(draft.notes), timestamp
+        id, draft.title, draft.details, draft.moduleKey, draft.projectId, draft.parentTaskId,
+        draft.orderIndex, draft.priority, draft.dueDate, draft.scheduledStart, draft.estimatedMinutes,
+        draft.nextAction, draft.blocker, draft.progress, draft.notes, timestamp
       ]
     );
 
@@ -124,8 +215,8 @@ export async function updateTask(id: string, draft: TaskDraft): Promise<Task> {
 
     await tx.query(
       "INSERT INTO task_events (id, task_id, event_type, metadata, created_at) " +
-        "VALUES ($1,$2,'task.updated','{}'::jsonb,$3)",
-      [crypto.randomUUID(), id, timestamp]
+        "VALUES ($1,$2,'task.updated',$3::jsonb,$4)",
+      [crypto.randomUUID(), id, JSON.stringify({ title: draft.title, moduleKey: draft.moduleKey }), timestamp]
     );
     return mapTask(row);
   });
@@ -139,8 +230,8 @@ export async function setTaskStatus(id: string, status: TaskStatus): Promise<voi
     const result = await tx.query<{ id: string }>(
       "UPDATE tasks SET status=$2, completed_at=$3, " +
         "progress=CASE WHEN $2='done' THEN 100 ELSE CASE WHEN progress=100 THEN 0 ELSE progress END END, " +
-        "updated_at=$3 WHERE id=$1 AND archived_at IS NULL RETURNING id",
-      [id, status, status === "done" ? timestamp : null]
+        "updated_at=$4 WHERE id=$1 AND archived_at IS NULL RETURNING id",
+      [id, status, status === "done" ? timestamp : null, timestamp]
     );
     if (result.rows.length === 0) throw new Error("The task could not be updated.");
 
@@ -158,8 +249,7 @@ export async function archiveTask(id: string): Promise<void> {
 
   await db.transaction(async (tx) => {
     const result = await tx.query<{ id: string }>(
-      "UPDATE tasks SET archived_at=$2, updated_at=$2 " +
-        "WHERE id=$1 AND archived_at IS NULL RETURNING id",
+      "UPDATE tasks SET archived_at=$2, updated_at=$2 WHERE id=$1 AND archived_at IS NULL RETURNING id",
       [id, timestamp]
     );
     if (result.rows.length === 0) throw new Error("The task could not be archived.");
@@ -170,4 +260,47 @@ export async function archiveTask(id: string): Promise<void> {
       [crypto.randomUUID(), id, timestamp]
     );
   });
+}
+
+export async function restoreTask(id: string): Promise<void> {
+  const db = await getDatabase();
+  const timestamp = new Date().toISOString();
+  await db.transaction(async (tx) => {
+    const result = await tx.query<{ id: string }>(
+      "UPDATE tasks SET archived_at=NULL, updated_at=$2 WHERE id=$1 AND archived_at IS NOT NULL RETURNING id",
+      [id, timestamp]
+    );
+    if (result.rows.length === 0) throw new Error("This archived task could not be restored.");
+    await tx.query(
+      "INSERT INTO task_events (id, task_id, event_type, metadata, created_at) VALUES ($1,$2,'task.restored','{}'::jsonb,$3)",
+      [crypto.randomUUID(), id, timestamp]
+    );
+  });
+}
+
+export async function reorderTask(id: string, orderIndex: number): Promise<void> {
+  if (!Number.isInteger(orderIndex) || orderIndex < 0) throw new Error("Task order must be a non-negative integer.");
+  const db = await getDatabase();
+  const timestamp = new Date().toISOString();
+  const result = await db.query(
+    "UPDATE tasks SET order_index=$2, updated_at=$3 WHERE id=$1 AND archived_at IS NULL",
+    [id, orderIndex, timestamp]
+  );
+  if (result.affectedRows === 0) throw new Error("The task could not be reordered.");
+}
+
+export async function getTaskEvents(taskId: string): Promise<TaskEvent[]> {
+  const db = await getDatabase();
+  const result = await db.query<EventRow>(
+    "SELECT id, task_id, event_type, metadata, created_at::text AS created_at " +
+      "FROM task_events WHERE task_id=$1 ORDER BY created_at DESC",
+    [taskId]
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    taskId: row.task_id,
+    eventType: row.event_type,
+    metadata: row.metadata,
+    createdAt: row.created_at
+  }));
 }
