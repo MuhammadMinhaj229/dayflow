@@ -16,13 +16,18 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "android:bootstrap": "npm run build && node scripts/bootstrap-android.mjs",
+    "android:sync": "npm run build && cap sync android",
+    "android:open": "cap open android"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.15",
     "lucide-react": "1.70.0",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "@capacitor/android": "8.6.0",
+    "@capacitor/core": "8.6.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -38,6 +43,7 @@
     "typescript-eslint": "8.72.1",
     "vite": "8.3.6",
     "vite-plugin-pwa": "2.0.0",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "@capacitor/cli": "8.6.0"
   }
 }
